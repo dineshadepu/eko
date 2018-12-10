@@ -43,30 +43,27 @@ impl<R: Read> Lexer<R> {
             None => return Ok(None),
         };
 
-        if is_digit(byte) {
-            return Ok(Some(self.number()?));
-        } else if is_alpha(byte) || byte == b'_' {
-            if let Token::Identifier(identifier) = self.identifier()? {
-                let token = match identifier.as_str() {
-                    "not" => Token::Not,
-                    "null" => Token::Null,
-                    _ => Token::Identifier(identifier),
-                };
-                return Ok(Some(token));
-            } else {
-                unreachable!("`Lexer::identifier` did not return `Token::Identifier`");
-            }
-        }
-
         let token = match byte {
-            b'+' => Token::Add,
-            b'-' => Token::Subtract,
-            b'*' => Token::Multiply,
-            b'/' => Token::Divide,
             b'\n' => Token::Newline,
+            byte if is_digit(byte) => self.number()?,
+            byte if is_operator(byte) => self.operator()?,
+            byte if is_alpha(byte) || byte == b'_' => {
+                if let Token::Identifier(identifier) = self.identifier()? {
+                    let token = match identifier.as_str() {
+                        "not" => Token::Not,
+                        "null" => Token::Null,
+                        "true" => Token::Boolean(true),
+                        "false" => Token::Boolean(false),
+                        _ => Token::Identifier(identifier),
+                    };
+                    token
+                } else {
+                    unreachable!("`Lexer::identifier` did not return `Token::Identifier`");
+                }
+            }
             _ => return Err(Error),
         };
-        self.source_advance()?;
+
         Ok(Some(token))
     }
 
@@ -89,6 +86,25 @@ impl<R: Read> Lexer<R> {
         } else {
             Ok(Token::Integer(buf.parse().map_err(|_| Error)?))
         }
+    }
+
+    fn operator(&mut self) -> Result<Token> {
+        let first = self.source_advance()?;
+        let second = self.source_peek()?;
+        let token = match (first, second) {
+            (b'+', _) => Token::Add,
+            (b'-', _) => Token::Subtract,
+            (b'*', _) => Token::Multiply,
+            (b'/', _) => Token::Divide,
+            (b'=', Some(b'=')) => Token::Equal,
+            (b'=', _) => Token::Assign,
+            (b'<', Some(b'=')) => Token::LessEqual,
+            (b'<', _) => Token::Less,
+            (b'>', Some(b'=')) => Token::GreaterEqual,
+            (b'>', _) => Token::Greater,
+            _ => return Err(Error),
+        };
+        Ok(token)
     }
 
     fn identifier(&mut self) -> Result<Token> {
@@ -154,6 +170,13 @@ fn is_digit(byte: u8) -> bool {
     byte >= b'0' && byte <= b'9'
 }
 
+fn is_operator(byte: u8) -> bool {
+    match byte {
+        b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' => true,
+        _ => false,
+    }
+}
+
 fn is_whitespace(byte: u8) -> bool {
     match byte {
         b' ' | b'\t' | b'\r' | b'\n' => true,
@@ -168,6 +191,12 @@ enum Token {
     Multiply,
     Divide,
 
+    Assign,
+    Equal,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
     Not,
 
     Null,
@@ -198,7 +227,27 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn expression(&mut self) -> Result<Expression> {
-        self.add()
+        self.compare()
+    }
+
+    fn compare(&mut self) -> Result<Expression> {
+        let mut left = self.add()?;
+        loop {
+            let token = match self.lexer_peek()? {
+                Some(token) => token,
+                None => return Ok(left),
+            };
+            match token {
+                Token::Equal
+                | Token::Less
+                | Token::LessEqual
+                | Token::Greater
+                | Token::GreaterEqual => {}
+                _ => return Ok(left),
+            }
+            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary, left.into(), self.add()?.into());
+        }
     }
 
     fn add(&mut self) -> Result<Expression> {
@@ -294,6 +343,12 @@ enum Binary {
     Subtract,
     Multiply,
     Divide,
+
+    Equal,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }
 
 impl Binary {
@@ -303,6 +358,13 @@ impl Binary {
             Token::Subtract => Binary::Subtract,
             Token::Multiply => Binary::Multiply,
             Token::Divide => Binary::Divide,
+
+            Token::Equal => Binary::Equal,
+            Token::Less => Binary::Less,
+            Token::LessEqual => Binary::LessEqual,
+            Token::Greater => Binary::Greater,
+            Token::GreaterEqual => Binary::GreaterEqual,
+
             _ => return None,
         };
         Some(binary)
@@ -396,6 +458,12 @@ enum Instruction {
     Multiply,
     Divide,
 
+    Equal,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
     Negate,
     Not,
 }
@@ -405,8 +473,9 @@ impl Instruction {
         use self::Instruction::*;
 
         match self {
-            Add | Subtract | Multiply | Divide => true,
-            PushConstant(_) | PushTrue | PushFalse | PushNull | Pop | Negate | Not => false,
+            Add | Subtract | Multiply | Divide | Equal | Less | LessEqual | Greater
+            | GreaterEqual => true,
+            _ => false,
         }
     }
 
@@ -415,8 +484,7 @@ impl Instruction {
 
         match self {
             Negate | Not => true,
-            PushConstant(_) | PushTrue | PushFalse | PushNull | Pop | Add | Subtract | Multiply
-            | Divide => false,
+            _ => false,
         }
     }
 }
@@ -428,6 +496,12 @@ impl From<Binary> for Instruction {
             Binary::Subtract => Instruction::Subtract,
             Binary::Multiply => Instruction::Multiply,
             Binary::Divide => Instruction::Divide,
+
+            Binary::Equal => Instruction::Equal,
+            Binary::Less => Instruction::Less,
+            Binary::LessEqual => Instruction::LessEqual,
+            Binary::Greater => Instruction::Greater,
+            Binary::GreaterEqual => Instruction::GreaterEqual,
         }
     }
 }
@@ -591,6 +665,28 @@ impl Fiber {
             (Divide, Float(left), Integer(right)) => Float(left / right as f64),
             (Divide, Float(left), Float(right)) => Float(left / right),
 
+            (Equal, left, right) => Boolean(left == right),
+
+            (Less, Integer(left), Integer(right)) => Boolean(left < right),
+            (Less, Integer(left), Float(right)) => Boolean((left as f64) < right),
+            (Less, Float(left), Integer(right)) => Boolean(left < right as f64),
+            (Less, Float(left), Float(right)) => Boolean(left < right),
+
+            (LessEqual, Integer(left), Integer(right)) => Boolean(left <= right),
+            (LessEqual, Integer(left), Float(right)) => Boolean((left as f64) <= right),
+            (LessEqual, Float(left), Integer(right)) => Boolean(left <= right as f64),
+            (LessEqual, Float(left), Float(right)) => Boolean(left <= right),
+
+            (Greater, Integer(left), Integer(right)) => Boolean(left > right),
+            (Greater, Integer(left), Float(right)) => Boolean(left as f64 > right),
+            (Greater, Float(left), Integer(right)) => Boolean(left > right as f64),
+            (Greater, Float(left), Float(right)) => Boolean(left > right),
+
+            (GreaterEqual, Integer(left), Integer(right)) => Boolean(left >= right),
+            (GreaterEqual, Integer(left), Float(right)) => Boolean(left as f64 >= right),
+            (GreaterEqual, Float(left), Integer(right)) => Boolean(left >= right as f64),
+            (GreaterEqual, Float(left), Float(right)) => Boolean(left >= right),
+
             _ => unimplemented!("binary not yet implemented"),
         };
 
@@ -695,12 +791,28 @@ mod tests {
     use super::{Engine, Value};
 
     #[test]
-    fn simple_add() {
+    fn add() {
         assert_eq!(Engine::evaluate_expression("1 + 1"), Ok(Value::Integer(2)));
     }
 
     #[test]
-    fn simple_subtract() {
+    fn subtract() {
         assert_eq!(Engine::evaluate_expression("1 - 1"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn less() {
+        assert_eq!(
+            Engine::evaluate_expression("2 < 1"),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn greater() {
+        assert_eq!(
+            Engine::evaluate_expression("2 > 1"),
+            Ok(Value::Boolean(true))
+        );
     }
 }
