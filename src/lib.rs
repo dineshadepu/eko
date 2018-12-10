@@ -2,21 +2,26 @@ use std::io::{Cursor, ErrorKind, Read};
 
 type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug, PartialEq)]
 struct Error;
 
 struct Engine;
 
 impl Engine {
-    fn evaluate(source: &str) -> Result<()> {
+    fn evaluate_expression(source: &str) -> Result<Value> {
         let mut state = State::new();
 
         let mut lexer = Lexer::new(Cursor::new(source));
-        let parser = Parser::new(&mut lexer);
-        let block = parser.parse()?;
-        Generator::new(&mut state).generate(block);
+        let mut parser = Parser::new(&mut lexer);
 
-        let mut fiber = Fiber::new(0);
-        fiber.finish(&state)
+        let expression = parser.expression()?;
+        let mut chunk = Chunk::new();
+        Generator::new(&mut state).expression(&mut chunk, expression);
+        let chunk = state.chunks.push_unchecked(chunk);
+
+        let mut fiber = Fiber::new(chunk);
+        fiber.finish(&state)?;
+        fiber.operands_pop()
     }
 }
 
@@ -184,8 +189,12 @@ impl<'a, R: Read> Parser<'a, R> {
         Parser { lexer, peek: None }
     }
 
-    fn parse(mut self) -> Result<Block> {
-        Ok(Block::new(vec![Statement::Expression(self.expression()?)]))
+    fn block(&mut self) -> Result<Block> {
+        Ok(Block::new(vec![self.statement()?]))
+    }
+
+    fn statement(&mut self) -> Result<Statement> {
+        Ok(Statement::Expression(self.expression()?))
     }
 
     fn expression(&mut self) -> Result<Expression> {
@@ -337,7 +346,7 @@ impl<T> Pool<T> {
         Pool(Vec::new())
     }
 
-    fn push(&mut self, item: T) -> usize {
+    fn push_unchecked(&mut self, item: T) -> usize {
         let index = self.0.len();
         self.0.push(item);
         index
@@ -349,8 +358,15 @@ impl<T> Pool<T> {
 }
 
 impl<T: PartialEq> Pool<T> {
-    fn push_checked(&mut self, item: T) -> usize {
-        self.push(item)
+    fn push(&mut self, item: T) -> usize {
+        if let Some(index) = self.get_index(&item) {
+            return index;
+        }
+        self.push_unchecked(item)
+    }
+
+    fn get_index(&self, item: &T) -> Option<usize> {
+        self.0.iter().position(|ref i| i == &item)
     }
 }
 
@@ -440,16 +456,12 @@ impl<'a> Generator<'a> {
         Generator { state }
     }
 
-    fn generate(mut self, block: Block) {
-        self.chunk(block);
-    }
-
-    fn chunk(&mut self, block: Block) -> usize {
+    fn block(&mut self, block: Block) -> usize {
         let mut chunk = Chunk::new();
         for statement in block.statements {
             self.statement(&mut chunk, statement);
         }
-        self.state.chunks.push(chunk)
+        self.state.chunks.push_unchecked(chunk)
     }
 
     fn statement(&mut self, chunk: &mut Chunk, statement: Statement) {
@@ -464,11 +476,14 @@ impl<'a> Generator<'a> {
     fn expression(&mut self, chunk: &mut Chunk, expression: Expression) {
         match expression {
             Expression::Integer(integer) => {
-                let constant = self.state.constants.push(Constant::Integer(integer));
+                let constant = self
+                    .state
+                    .constants
+                    .push_unchecked(Constant::Integer(integer));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Float(float) => {
-                let constant = self.state.constants.push(Constant::Float(float));
+                let constant = self.state.constants.push_unchecked(Constant::Float(float));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Binary(binary, left, right) => {
@@ -526,9 +541,7 @@ impl Fiber {
             PushTrue => self.operands.push(Value::Boolean(true)),
             PushFalse => self.operands.push(Value::Boolean(false)),
             PushNull => self.operands.push(Value::Null),
-            Pop => {
-                self.operands_pop()?;
-            }
+            Pop => self.pop()?,
 
             instruction if instruction.is_binary() => self.binary(*instruction)?,
             instruction if instruction.is_unary() => self.unary(*instruction)?,
@@ -542,6 +555,11 @@ impl Fiber {
     fn push_constant(&mut self, state: &State, constant: usize) -> Result<()> {
         let constant = state.constants.get(constant).ok_or_else(|| Error)?;
         self.operands.push(constant.into());
+        Ok(())
+    }
+
+    fn pop(&mut self) -> Result<()> {
+        self.operands_pop()?;
         Ok(())
     }
 
@@ -610,7 +628,7 @@ impl Fiber {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Value {
     Null,
     Integer(i64),
@@ -674,10 +692,15 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use super::Engine;
+    use super::{Engine, Value};
 
     #[test]
-    fn simple_addition() {
-        assert!(Engine::evaluate("1 + 1").is_ok());
+    fn simple_add() {
+        assert_eq!(Engine::evaluate_expression("1 + 1"), Ok(Value::Integer(2)));
+    }
+
+    #[test]
+    fn simple_subtract() {
+        assert_eq!(Engine::evaluate_expression("1 - 1"), Ok(Value::Integer(0)));
     }
 }
