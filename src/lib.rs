@@ -11,7 +11,7 @@ impl Engine {
     fn evaluate_expression(source: &str) -> Result<Value> {
         let mut state = State::new();
 
-        let mut lexer = Lexer::new(Cursor::new(source));
+        let mut lexer = Lexer::new(&mut state, Cursor::new(source));
         let mut parser = Parser::new(&mut lexer);
 
         let expression = parser.expression()?;
@@ -25,14 +25,19 @@ impl Engine {
     }
 }
 
-struct Lexer<R: Read> {
+struct Lexer<'a, R: Read> {
+    state: &'a mut State,
     source: R,
     peek: Option<u8>,
 }
 
-impl<R: Read> Lexer<R> {
-    fn new(source: R) -> Lexer<R> {
-        Lexer { source, peek: None }
+impl<'a, R: Read> Lexer<'a, R> {
+    fn new(state: &'a mut State, source: R) -> Lexer<'a, R> {
+        Lexer {
+            state,
+            source,
+            peek: None,
+        }
     }
 
     fn next(&mut self) -> Result<Option<Token>> {
@@ -49,7 +54,7 @@ impl<R: Read> Lexer<R> {
             byte if is_operator(byte) => self.operator()?,
             byte if is_alpha(byte) || byte == b'_' => {
                 if let Token::Identifier(identifier) = self.identifier()? {
-                    let token = match identifier.as_str() {
+                    let token = match self.state.symbols.get(identifier).unwrap().as_str() {
                         "not" => Token::Not,
                         "null" => Token::Null,
                         "true" => Token::Boolean(true),
@@ -118,7 +123,7 @@ impl<R: Read> Lexer<R> {
             buf.push(byte);
         }
         let buf = String::from_utf8(buf).map_err(|_| Error)?;
-        Ok(Token::Identifier(buf))
+        Ok(Token::Identifier(self.state.symbols.push(buf)))
     }
 
     fn whitespace(&mut self) -> Result<()> {
@@ -203,18 +208,18 @@ enum Token {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Identifier(String),
+    Identifier(usize),
 
     Newline,
 }
 
 struct Parser<'a, R: Read> {
-    lexer: &'a mut Lexer<R>,
+    lexer: &'a mut Lexer<'a, R>,
     peek: Option<Token>,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
-    fn new(lexer: &'a mut Lexer<R>) -> Parser<'a, R> {
+    fn new(lexer: &'a mut Lexer<'a, R>) -> Parser<'a, R> {
         Parser { lexer, peek: None }
     }
 
@@ -388,6 +393,7 @@ impl Unary {
 }
 
 struct State {
+    symbols: Pool<String>,
     constants: Pool<Constant>,
     chunks: Pool<Chunk>,
 }
@@ -395,6 +401,7 @@ struct State {
 impl State {
     fn new() -> State {
         State {
+            symbols: Pool::new(),
             constants: Pool::new(),
             chunks: Pool::new(),
         }
