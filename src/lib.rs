@@ -743,6 +743,24 @@ impl Value {
     }
 }
 
+impl From<i64> for Value {
+    fn from(i: i64) -> Value {
+        Value::Integer(i)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(f: f64) -> Value {
+        Value::Float(f)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Boolean(b)
+    }
+}
+
 impl From<&Constant> for Value {
     fn from(constant: &Constant) -> Value {
         match constant {
@@ -792,27 +810,21 @@ mod tests {
 
     #[test]
     fn add() {
-        assert_eq!(Engine::evaluate_expression("1 + 1"), Ok(Value::Integer(2)));
+        assert_eq!(Engine::evaluate_expression("1 + 1"), Ok(2.into()));
     }
 
     #[test]
     fn subtract() {
-        assert_eq!(Engine::evaluate_expression("1 - 1"), Ok(Value::Integer(0)));
+        assert_eq!(Engine::evaluate_expression("1 - 1"), Ok(0.into()));
     }
 
     #[test]
     fn less() {
-        assert_eq!(
-            Engine::evaluate_expression("2 < 1"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(Engine::evaluate_expression("2 < 1"), Ok(false.into()));
     }
 
     #[test]
     fn greater() {
-        assert_eq!(
-            Engine::evaluate_expression("2 > 1"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(Engine::evaluate_expression("2 > 1"), Ok(true.into()));
     }
 }
