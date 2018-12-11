@@ -5,23 +5,63 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, PartialEq)]
 struct Error;
 
-struct Engine;
+struct Engine<'a> {
+    state: EngineState<'a>,
+}
 
-impl Engine {
-    fn evaluate_expression(source: &str) -> Result<Value> {
-        let mut state = State::new();
+impl<'a> Engine<'a> {
+    fn new() -> Engine<'a> {
+        Engine {
+            state: State::new().into(),
+        }
+    }
 
-        let mut lexer = Lexer::new(&mut state, Cursor::new(source));
+    fn with_state(state: &'a mut State) -> Engine<'a> {
+        Engine {
+            state: state.into(),
+        }
+    }
+
+    fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
+        let mut lexer = Lexer::new(self.state.as_mut(), Cursor::new(source));
         let mut parser = Parser::new(&mut lexer);
 
         let expression = parser.expression()?;
         let mut chunk = Chunk::new();
-        Generator::new(&mut state).expression(&mut chunk, expression);
-        let chunk = state.chunks.push_unchecked(chunk);
+        Generator::new(self.state.as_mut()).expression(&mut chunk, expression);
+        let chunk = self.state.as_mut().chunks.push_unchecked(chunk);
 
         let mut fiber = Fiber::new(chunk);
-        fiber.finish(&state)?;
+        fiber.finish(self.state.as_mut())?;
         fiber.operands_pop()
+    }
+}
+
+enum EngineState<'a> {
+    Owned(State),
+    Borrowed(&'a mut State),
+}
+
+impl<'a> EngineState<'a> {
+    fn as_mut(&mut self) -> &mut State {
+        use self::EngineState::*;
+
+        match self {
+            Owned(ref mut state) => state,
+            Borrowed(state) => state,
+        }
+    }
+}
+
+impl<'a> From<&'a mut State> for EngineState<'a> {
+    fn from(state: &'a mut State) -> EngineState<'a> {
+        EngineState::Borrowed(state)
+    }
+}
+
+impl<'a> From<State> for EngineState<'a> {
+    fn from(state: State) -> EngineState<'a> {
+        EngineState::Owned(state)
     }
 }
 
@@ -859,34 +899,40 @@ mod tests {
 
     #[test]
     fn add() {
-        assert_eq!(Engine::evaluate_expression("1 + 1"), Ok(2.into()));
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("1 + 1"), Ok(2.into()));
     }
 
     #[test]
     fn subtract() {
-        assert_eq!(Engine::evaluate_expression("1 - 1"), Ok(0.into()));
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("1 - 1"), Ok(0.into()));
     }
 
     #[test]
     fn less() {
-        assert_eq!(Engine::evaluate_expression("2 < 1"), Ok(false.into()));
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("2 < 1"), Ok(false.into()));
     }
 
     #[test]
     fn greater() {
-        assert_eq!(Engine::evaluate_expression("2 > 1"), Ok(true.into()));
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("2 > 1"), Ok(true.into()));
     }
 
     #[test]
     fn and() {
+        let mut engine = Engine::new();
         assert_eq!(
-            Engine::evaluate_expression("true and false"),
+            engine.evaluate_expression("true and false"),
             Ok(false.into())
         );
     }
 
     #[test]
     fn or() {
-        assert_eq!(Engine::evaluate_expression("true or true"), Ok(true.into()));
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("true or true"), Ok(true.into()));
     }
 }
