@@ -59,6 +59,8 @@ impl<'a, R: Read> Lexer<'a, R> {
                         "null" => Token::Null,
                         "true" => Token::Boolean(true),
                         "false" => Token::Boolean(false),
+                        "and" => Token::And,
+                        "or" => Token::Or,
                         _ => Token::Identifier(identifier),
                     };
                     token
@@ -202,6 +204,9 @@ enum Token {
     LessEqual,
     Greater,
     GreaterEqual,
+
+    And,
+    Or,
     Not,
 
     Null,
@@ -232,7 +237,23 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn expression(&mut self) -> Result<Expression> {
-        self.compare()
+        self.logical()
+    }
+
+    fn logical(&mut self) -> Result<Expression> {
+        let mut left = self.compare()?;
+        loop {
+            let token = match self.lexer_peek()? {
+                Some(token) => token,
+                None => return Ok(left),
+            };
+            match token {
+                Token::And | Token::Or => {}
+                _ => return Ok(left),
+            }
+            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary, left.into(), self.compare()?.into());
+        }
     }
 
     fn compare(&mut self) -> Result<Expression> {
@@ -304,6 +325,7 @@ impl<'a, R: Read> Parser<'a, R> {
         let expression = match self.lexer_advance()? {
             Token::Integer(integer) => Expression::Integer(integer),
             Token::Float(integer) => Expression::Float(integer),
+            Token::Boolean(boolean) => Expression::Boolean(boolean),
             _ => return Err(Error),
         };
         Ok(expression)
@@ -336,13 +358,16 @@ enum Statement {
     Expression(Expression),
 }
 
+#[derive(Debug)]
 enum Expression {
     Integer(i64),
     Float(f64),
+    Boolean(bool),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),
 }
 
+#[derive(Debug)]
 enum Binary {
     Add,
     Subtract,
@@ -354,6 +379,9 @@ enum Binary {
     LessEqual,
     Greater,
     GreaterEqual,
+
+    And,
+    Or,
 }
 
 impl Binary {
@@ -370,12 +398,16 @@ impl Binary {
             Token::Greater => Binary::Greater,
             Token::GreaterEqual => Binary::GreaterEqual,
 
+            Token::And => Binary::And,
+            Token::Or => Binary::Or,
+
             _ => return None,
         };
         Some(binary)
     }
 }
 
+#[derive(Debug)]
 enum Unary {
     Negate,
     Not,
@@ -455,8 +487,7 @@ impl Chunk {
 #[derive(Clone, Copy, Debug)]
 enum Instruction {
     PushConstant(usize),
-    PushTrue,
-    PushFalse,
+    PushBoolean(bool),
     PushNull,
     Pop,
 
@@ -464,6 +495,7 @@ enum Instruction {
     Subtract,
     Multiply,
     Divide,
+    Negate,
 
     Equal,
     Less,
@@ -471,7 +503,8 @@ enum Instruction {
     Greater,
     GreaterEqual,
 
-    Negate,
+    And,
+    Or,
     Not,
 }
 
@@ -481,7 +514,7 @@ impl Instruction {
 
         match self {
             Add | Subtract | Multiply | Divide | Equal | Less | LessEqual | Greater
-            | GreaterEqual => true,
+            | GreaterEqual | And | Or => true,
             _ => false,
         }
     }
@@ -509,6 +542,9 @@ impl From<Binary> for Instruction {
             Binary::LessEqual => Instruction::LessEqual,
             Binary::Greater => Instruction::Greater,
             Binary::GreaterEqual => Instruction::GreaterEqual,
+
+            Binary::And => Instruction::And,
+            Binary::Or => Instruction::Or,
         }
     }
 }
@@ -567,6 +603,9 @@ impl<'a> Generator<'a> {
                 let constant = self.state.constants.push_unchecked(Constant::Float(float));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
+            Expression::Boolean(boolean) => {
+                chunk.instructions.push(Instruction::PushBoolean(boolean));
+            }
             Expression::Binary(binary, left, right) => {
                 self.expression(chunk, *left);
                 self.expression(chunk, *right);
@@ -619,8 +658,7 @@ impl Fiber {
 
         match instruction {
             PushConstant(constant) => self.push_constant(state, *constant)?,
-            PushTrue => self.operands.push(Value::Boolean(true)),
-            PushFalse => self.operands.push(Value::Boolean(false)),
+            PushBoolean(boolean) => self.operands.push(Value::from(*boolean)),
             PushNull => self.operands.push(Value::Null),
             Pop => self.pop()?,
 
@@ -693,6 +731,10 @@ impl Fiber {
             (GreaterEqual, Integer(left), Float(right)) => Boolean(left as f64 >= right),
             (GreaterEqual, Float(left), Integer(right)) => Boolean(left >= right as f64),
             (GreaterEqual, Float(left), Float(right)) => Boolean(left >= right),
+
+            (And, left, right) => Boolean(left.is_truthy() && right.is_truthy()),
+
+            (Or, left, right) => Boolean(left.is_truthy() || right.is_truthy()),
 
             _ => unimplemented!("binary not yet implemented"),
         };
@@ -833,5 +875,18 @@ mod tests {
     #[test]
     fn greater() {
         assert_eq!(Engine::evaluate_expression("2 > 1"), Ok(true.into()));
+    }
+
+    #[test]
+    fn and() {
+        assert_eq!(
+            Engine::evaluate_expression("true and false"),
+            Ok(false.into())
+        );
+    }
+
+    #[test]
+    fn or() {
+        assert_eq!(Engine::evaluate_expression("true or true"), Ok(true.into()));
     }
 }
