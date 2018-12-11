@@ -23,15 +23,9 @@ impl<'a> Engine<'a> {
     }
 
     fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
-        let mut lexer = Lexer::new(self.state.as_mut(), Cursor::new(source));
-        let mut parser = Parser::new(&mut lexer);
-
-        let expression = parser.expression()?;
-        let mut chunk = Chunk::new();
-        Generator::new(self.state.as_mut()).expression(&mut chunk, expression);
-        let chunk = self.state.as_mut().chunks.push_unchecked(chunk);
-
-        let mut fiber = Fiber::new(chunk);
+        let mut compiler = Compiler::new(self.state.as_mut());
+        let entry = compiler.compile_str(source)?;
+        let mut fiber = Fiber::new(entry);
         fiber.finish(self.state.as_mut())?;
         fiber.operands_pop()
     }
@@ -62,6 +56,29 @@ impl<'a> From<&'a mut State> for EngineState<'a> {
 impl<'a> From<State> for EngineState<'a> {
     fn from(state: State) -> EngineState<'a> {
         EngineState::Owned(state)
+    }
+}
+
+struct Compiler<'a> {
+    state: &'a mut State,
+}
+
+impl<'a> Compiler<'a> {
+    fn new(state: &'a mut State) -> Compiler<'a> {
+        Compiler { state }
+    }
+
+    fn compile_str(&mut self, source: &str) -> Result<usize> {
+        self.compile(Cursor::new(source))
+    }
+
+    fn compile<R: Read>(&mut self, source: R) -> Result<usize> {
+        let mut lexer = Lexer::new(&mut self.state, source);
+        let mut parser = Parser::new(&mut lexer);
+        let expression = parser.expression()?;
+        let mut chunk = Chunk::new();
+        Generator::new(&mut self.state).expression(&mut chunk, expression);
+        Ok(self.state.chunks.push_unchecked(chunk))
     }
 }
 
@@ -665,10 +682,10 @@ struct Fiber {
 }
 
 impl Fiber {
-    fn new(chunk: usize) -> Fiber {
+    fn new(entry: usize) -> Fiber {
         Fiber {
             operands: Vec::new(),
-            frames: vec![Frame::new(chunk)],
+            frames: vec![Frame::new(entry)],
         }
     }
 
@@ -934,5 +951,11 @@ mod tests {
     fn or() {
         let mut engine = Engine::new();
         assert_eq!(engine.evaluate_expression("true or true"), Ok(true.into()));
+    }
+
+    #[test]
+    fn complex() {
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_expression("1 + 4 * 5"), Ok(21.into()));
     }
 }
