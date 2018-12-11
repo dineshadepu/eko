@@ -109,22 +109,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             b'\n' => Token::Newline,
             byte if is_digit(byte) => self.number()?,
             byte if is_operator(byte) => self.operator()?,
-            byte if is_alpha(byte) || byte == b'_' => {
-                if let Token::Identifier(identifier) = self.identifier()? {
-                    let token = match self.state.symbols.get(identifier).unwrap().as_str() {
-                        "not" => Token::Not,
-                        "null" => Token::Null,
-                        "true" => Token::Boolean(true),
-                        "false" => Token::Boolean(false),
-                        "and" => Token::And,
-                        "or" => Token::Or,
-                        _ => Token::Identifier(identifier),
-                    };
-                    token
-                } else {
-                    unreachable!("`Lexer::identifier` did not return `Token::Identifier`");
-                }
-            }
+            byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
             _ => return Err(Error),
         };
 
@@ -182,7 +167,16 @@ impl<'a, R: Read> Lexer<'a, R> {
             buf.push(byte);
         }
         let buf = String::from_utf8(buf).map_err(|_| Error)?;
-        Ok(Token::Identifier(self.state.symbols.push(buf)))
+        let token = match buf.as_str() {
+            "not" => Token::Not,
+            "null" => Token::Null,
+            "true" => Token::Boolean(true),
+            "false" => Token::Boolean(false),
+            "and" => Token::And,
+            "or" => Token::Or,
+            _ => Token::Identifier(self.state.symbols.push(buf)),
+        };
+        Ok(token)
     }
 
     fn whitespace(&mut self) -> Result<()> {
