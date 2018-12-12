@@ -709,7 +709,7 @@ impl Fiber {
 
         match instruction {
             PushConstant(constant) => self.push_constant(state, *constant)?,
-            PushBoolean(boolean) => self.operands.push(Value::from(*boolean)),
+            PushBoolean(boolean) => self.operands.push((*boolean).into()),
             PushNull => self.operands.push(Value::Null),
             Pop => self.pop()?,
 
