@@ -5,57 +5,23 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, PartialEq)]
 struct Error;
 
-struct Engine<'a> {
-    state: EngineState<'a>,
+struct Engine {
+    state: State,
 }
 
-impl<'a> Engine<'a> {
-    fn new() -> Engine<'a> {
+impl Engine {
+    fn new() -> Engine {
         Engine {
-            state: State::new().into(),
-        }
-    }
-
-    fn with_state(state: &'a mut State) -> Engine<'a> {
-        Engine {
-            state: state.into(),
+            state: State::new(),
         }
     }
 
     fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
-        let mut compiler = Compiler::new(self.state.as_mut());
+        let mut compiler = Compiler::new(&mut self.state);
         let entry = compiler.compile_str(source)?;
         let mut fiber = Fiber::new(entry);
-        fiber.finish(self.state.as_mut())?;
+        fiber.finish(&mut self.state)?;
         fiber.operands_pop()
-    }
-}
-
-enum EngineState<'a> {
-    Owned(State),
-    Borrowed(&'a mut State),
-}
-
-impl<'a> EngineState<'a> {
-    fn as_mut(&mut self) -> &mut State {
-        use self::EngineState::*;
-
-        match self {
-            Owned(ref mut state) => state,
-            Borrowed(state) => state,
-        }
-    }
-}
-
-impl<'a> From<&'a mut State> for EngineState<'a> {
-    fn from(state: &'a mut State) -> EngineState<'a> {
-        EngineState::Borrowed(state)
-    }
-}
-
-impl<'a> From<State> for EngineState<'a> {
-    fn from(state: State) -> EngineState<'a> {
-        EngineState::Owned(state)
     }
 }
 
