@@ -1,9 +1,8 @@
 use std::io::{Cursor, ErrorKind, Read};
 
-type Result<T> = std::result::Result<T, Error>;
+use failure::{bail, format_err, Error};
 
-#[derive(Debug, PartialEq)]
-struct Error;
+type Result<T> = std::result::Result<T, Error>;
 
 struct Engine {
     state: State,
@@ -76,7 +75,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             byte if is_digit(byte) => self.number()?,
             byte if is_operator(byte) => self.operator()?,
             byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
-            _ => return Err(Error),
+            _ => bail!("unexpected byte: '{}'", byte),
         };
 
         Ok(Some(token))
@@ -87,7 +86,7 @@ impl<'a, R: Read> Lexer<'a, R> {
         let mut float = false;
         while let Some(byte) = self.source_peek()? {
             match byte {
-                b'.' if float => return Err(Error),
+                b'.' if float => bail!("unexpected second decimal point"),
                 b'.' => float = true,
                 byte if !is_digit(byte) => break,
                 _ => {}
@@ -95,11 +94,11 @@ impl<'a, R: Read> Lexer<'a, R> {
             self.source_advance()?;
             buf.push(byte);
         }
-        let buf = String::from_utf8(buf).map_err(|_| Error)?;
+        let buf = String::from_utf8(buf)?;
         if float {
-            Ok(Token::Float(buf.parse().map_err(|_| Error)?))
+            Ok(Token::Float(buf.parse()?))
         } else {
-            Ok(Token::Integer(buf.parse().map_err(|_| Error)?))
+            Ok(Token::Integer(buf.parse()?))
         }
     }
 
@@ -117,7 +116,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             (b'<', _) => Token::Less,
             (b'>', Some(b'=')) => Token::GreaterEqual,
             (b'>', _) => Token::Greater,
-            _ => return Err(Error),
+            _ => unimplemented!("operator not yet implemented"),
         };
         Ok(token)
     }
@@ -132,7 +131,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             self.source_advance()?;
             buf.push(byte);
         }
-        let buf = String::from_utf8(buf).map_err(|_| Error)?;
+        let buf = String::from_utf8(buf)?;
         let token = match buf.as_str() {
             "not" => Token::Not,
             "null" => Token::Null,
@@ -166,7 +165,9 @@ impl<'a, R: Read> Lexer<'a, R> {
 
     fn source_advance(&mut self) -> Result<u8> {
         self.source_peek()?;
-        self.peek.take().ok_or_else(|| Error)
+        self.peek
+            .take()
+            .ok_or_else(|| format_err!("unexpected end of source"))
     }
 }
 
@@ -180,7 +181,7 @@ fn read_single_byte<R: Read>(read: &mut R) -> Result<Option<u8>> {
                 if let ErrorKind::Interrupted = error.kind() {
                     continue;
                 }
-                Err(Error)
+                Err(error.into())
             }
         };
     }
@@ -343,7 +344,7 @@ impl<'a, R: Read> Parser<'a, R> {
             Token::Integer(integer) => Expression::Integer(integer),
             Token::Float(integer) => Expression::Float(integer),
             Token::Boolean(boolean) => Expression::Boolean(boolean),
-            _ => return Err(Error),
+            token => bail!("unexpected token: '{:?}'", token),
         };
         Ok(expression)
     }
@@ -357,7 +358,9 @@ impl<'a, R: Read> Parser<'a, R> {
 
     fn lexer_advance(&mut self) -> Result<Token> {
         self.lexer_peek()?;
-        self.peek.take().ok_or_else(|| Error)
+        self.peek
+            .take()
+            .ok_or_else(|| format_err!("unexpected end of source"))
     }
 }
 
@@ -665,7 +668,7 @@ impl Fiber {
         let instruction = state
             .chunks
             .get(frame.chunk)
-            .ok_or_else(|| Error)?
+            .ok_or_else(|| format_err!("failed to find chunk: {}", frame.chunk))?
             .instructions
             .get(frame.step());
         let instruction = match instruction {
@@ -689,7 +692,10 @@ impl Fiber {
     }
 
     fn push_constant(&mut self, state: &State, constant: usize) -> Result<()> {
-        let constant = state.constants.get(constant).ok_or_else(|| Error)?;
+        let constant = state
+            .constants
+            .get(constant)
+            .ok_or_else(|| format_err!("failed to find constant: {}", constant))?;
         self.operands.push(constant.into());
         Ok(())
     }
@@ -780,7 +786,9 @@ impl Fiber {
     }
 
     fn operands_pop(&mut self) -> Result<Value> {
-        self.operands.pop().ok_or_else(|| Error)
+        self.operands
+            .pop()
+            .ok_or_else(|| format_err!("failed to pop empty operand stack"))
     }
 
     fn cur_frame_mut(&mut self) -> &mut Frame {
@@ -889,45 +897,48 @@ mod tests {
     #[test]
     fn add() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 + 1"), Ok(2.into()));
+        assert_eq!(engine.evaluate_expression("1 + 1").unwrap(), 2.into());
     }
 
     #[test]
     fn subtract() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 - 1"), Ok(0.into()));
+        assert_eq!(engine.evaluate_expression("1 - 1").unwrap(), 0.into());
     }
 
     #[test]
     fn less() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("2 < 1"), Ok(false.into()));
+        assert_eq!(engine.evaluate_expression("2 < 1").unwrap(), false.into());
     }
 
     #[test]
     fn greater() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("2 > 1"), Ok(true.into()));
+        assert_eq!(engine.evaluate_expression("2 > 1").unwrap(), true.into());
     }
 
     #[test]
     fn and() {
         let mut engine = Engine::new();
         assert_eq!(
-            engine.evaluate_expression("true and false"),
-            Ok(false.into())
+            engine.evaluate_expression("true and false").unwrap(),
+            false.into()
         );
     }
 
     #[test]
     fn or() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("true or true"), Ok(true.into()));
+        assert_eq!(
+            engine.evaluate_expression("true or true").unwrap(),
+            true.into()
+        );
     }
 
     #[test]
     fn complex() {
         let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 + 4 * 5"), Ok(21.into()));
+        assert_eq!(engine.evaluate_expression("1 + 4 * 5").unwrap(), 21.into());
     }
 }
