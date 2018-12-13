@@ -4,18 +4,18 @@ use failure::{bail, format_err, Error};
 
 type Result<T> = std::result::Result<T, Error>;
 
-struct Engine {
+pub struct Engine {
     state: State,
 }
 
 impl Engine {
-    fn new() -> Engine {
+    pub fn new() -> Engine {
         Engine {
             state: State::new(),
         }
     }
 
-    fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
+    pub fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
         let mut compiler = Compiler::new(&mut self.state);
         let entry = compiler.compile_str(source)?;
         let mut fiber = Fiber::new(entry);
@@ -799,7 +799,7 @@ impl Fiber {
 }
 
 #[derive(Debug, PartialEq)]
-enum Value {
+pub enum Value {
     Null,
     Integer(i64),
     Float(f64),
@@ -887,58 +887,5 @@ impl Context {
         Context {
             variables: Vec::new(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Engine, Value};
-
-    #[test]
-    fn add() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 + 1").unwrap(), 2.into());
-    }
-
-    #[test]
-    fn subtract() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 - 1").unwrap(), 0.into());
-    }
-
-    #[test]
-    fn less() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("2 < 1").unwrap(), false.into());
-    }
-
-    #[test]
-    fn greater() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("2 > 1").unwrap(), true.into());
-    }
-
-    #[test]
-    fn and() {
-        let mut engine = Engine::new();
-        assert_eq!(
-            engine.evaluate_expression("true and false").unwrap(),
-            false.into()
-        );
-    }
-
-    #[test]
-    fn or() {
-        let mut engine = Engine::new();
-        assert_eq!(
-            engine.evaluate_expression("true or true").unwrap(),
-            true.into()
-        );
-    }
-
-    #[test]
-    fn complex() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.evaluate_expression("1 + 4 * 5").unwrap(), 21.into());
     }
 }
