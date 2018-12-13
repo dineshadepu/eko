@@ -827,6 +827,18 @@ impl From<bool> for Value {
     }
 }
 
+impl<T> From<Option<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(option: Option<T>) -> Value {
+        match option {
+            Some(value) => value.into(),
+            None => Value::Null,
+        }
+    }
+}
+
 impl From<&Constant> for Value {
     fn from(constant: &Constant) -> Value {
         match constant {
