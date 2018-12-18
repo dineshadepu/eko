@@ -2,6 +2,10 @@
 pub struct Pool<T>(Vec<T>);
 
 impl<T> Pool<T> {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn new() -> Pool<T> {
         Pool(Vec::new())
     }

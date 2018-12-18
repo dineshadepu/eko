@@ -47,3 +47,25 @@ fn complex() {
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate_expression("1 + 4 * 5").unwrap(), 21.into());
 }
+
+#[test]
+fn newline() {
+    let source = "
+        1 + 4 * 5
+        22 / 4.0
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate_expression(source).unwrap(), 5.5.into());
+}
+
+#[test]
+fn local() {
+    let source = "
+        var one = 1 + 4
+        var two = 2 * 3
+        var three = one + two
+        three
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate_expression(source).unwrap(), 11.into());
+}

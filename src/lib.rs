@@ -23,7 +23,7 @@ impl Engine {
     pub fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
         let mut compiler = Compiler::new(&mut self.state);
         let entry = compiler.compile_str(source)?;
-        let mut fiber = Fiber::new(entry);
+        let mut fiber = Fiber::new(&self.state, entry)?;
         fiber.finish(&self.state)?;
         fiber.operands_pop()
     }
@@ -45,10 +45,8 @@ impl<'a> Compiler<'a> {
     fn compile<R: Read>(&mut self, source: R) -> Result<usize> {
         let mut lexer = Lexer::new(&mut self.state, source);
         let mut parser = Parser::new(&mut lexer);
-        let expression = parser.expression()?;
-        let mut chunk = Chunk::new();
-        Generator::new(&mut self.state).expression(&mut chunk, expression)?;
-        Ok(self.state.chunks.push(chunk))
+        let expression = parser.block()?;
+        Generator::new(&mut self.state).block(expression)
     }
 }
 
@@ -144,6 +142,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "false" => Token::Boolean(false),
             "and" => Token::And,
             "or" => Token::Or,
+            "var" => Token::Var,
             _ => Token::Identifier(self.state.symbols.insert(buf)),
         };
         Ok(token)
@@ -238,6 +237,8 @@ enum Token {
     Boolean(bool),
     Identifier(usize),
 
+    Var,
+
     Newline,
 }
 
@@ -252,11 +253,34 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn block(&mut self) -> Result<Block> {
-        Ok(Block::new(vec![self.statement()?]))
+        let mut statements = Vec::new();
+        while self.lexer_peek()?.is_some() {
+            statements.push(self.statement()?);
+        }
+        Ok(Block::new(statements))
     }
 
     fn statement(&mut self) -> Result<Statement> {
-        Ok(Statement::Expression(self.expression()?))
+        let token = match self.lexer_peek()? {
+            Some(token) => token,
+            None => return Err(self.lexer_advance().unwrap_err()),
+        };
+        let statement = match token {
+            Token::Var => Statement::Declaration(self.declaration_var()?),
+            _ => Statement::Expression(self.expression()?),
+        };
+        Ok(statement)
+    }
+
+    fn declaration_var(&mut self) -> Result<Declaration> {
+        self.lexer_advance()?;
+        let identifier = self.expression()?;
+        match self.lexer_advance()? {
+            Token::Assign => {}
+            token => bail!("unexpected token: '{:?}'", token),
+        }
+        let expression = self.expression()?;
+        Ok(Declaration::Var(identifier, expression))
     }
 
     fn expression(&mut self) -> Result<Expression> {
@@ -381,7 +405,13 @@ impl Block {
 }
 
 enum Statement {
+    Declaration(Declaration),
     Expression(Expression),
+}
+
+#[derive(Debug)]
+enum Declaration {
+    Var(Expression, Expression),
 }
 
 #[derive(Debug)]
@@ -616,14 +646,46 @@ impl<'a> Generator<'a> {
         for statement in block.statements {
             self.statement(&mut chunk, statement)?;
         }
+
+        // The last expression should be returned, instead of being popped.
+        if let Some(Instruction::Pop) = chunk.instructions.last() {
+            chunk.instructions.pop();
+        }
+
         Ok(self.state.chunks.push(chunk))
     }
 
     fn statement(&mut self, chunk: &mut Chunk, statement: Statement) -> Result<()> {
         match statement {
+            Statement::Declaration(declaration) => {
+                self.declaration(chunk, declaration)?;
+            }
             Statement::Expression(expression) => {
                 self.expression(chunk, expression)?;
                 chunk.instructions.push(Instruction::Pop);
+            }
+        }
+        Ok(())
+    }
+
+    fn declaration(&mut self, chunk: &mut Chunk, declaration: Declaration) -> Result<()> {
+        match declaration {
+            Declaration::Var(identifier, expression) => {
+                let identifier = match identifier {
+                    Expression::Identifier(identifier) => identifier,
+                    _ => bail!("invalid left expression in assignment"),
+                };
+                if chunk.identifiers.get_by_value(&identifier).is_some() {
+                    let symbol =
+                        self.state.symbols.get(identifier).ok_or_else(|| {
+                            format_err!("failed to find symbol: '{}'", identifier)
+                        })?;
+                    bail!("variable already declared: {}", symbol);
+                }
+                self.expression(chunk, expression)?;
+                chunk
+                    .instructions
+                    .push(Instruction::PopLocal(chunk.identifiers.insert(identifier)))
             }
         }
         Ok(())
@@ -693,11 +755,18 @@ struct Fiber {
 }
 
 impl Fiber {
-    fn new(entry: usize) -> Fiber {
-        Fiber {
+    fn new(state: &State, entry: usize) -> Result<Fiber> {
+        let locals = state
+            .chunks
+            .get(entry)
+            .ok_or_else(|| format_err!("failed to find chunk: {}", entry))?
+            .identifiers
+            .len();
+        let fiber = Fiber {
             operands: Vec::new(),
-            frames: vec![Frame::new(entry)],
-        }
+            frames: vec![Frame::new(entry, locals)],
+        };
+        Ok(fiber)
     }
 
     fn finish(&mut self, state: &State) -> Result<()> {
@@ -730,6 +799,9 @@ impl Fiber {
             PushNull => self.operands.push(Value::Null),
             Pop => self.pop()?,
 
+            PushLocal(local) => self.push_local(state, *local)?,
+            PopLocal(local) => self.pop_local(state, *local)?,
+
             instruction if instruction.is_binary() => self.binary(*instruction)?,
             instruction if instruction.is_unary() => self.unary(*instruction)?,
 
@@ -750,6 +822,26 @@ impl Fiber {
 
     fn pop(&mut self) -> Result<()> {
         self.operands_pop()?;
+        Ok(())
+    }
+
+    fn push_local(&mut self, state: &State, local: usize) -> Result<()> {
+        let value = self
+            .cur_frame()
+            .locals
+            .get(local)
+            .ok_or_else(|| format_err!("failed to find local: {}", local))?;
+        self.operands.push(value.clone());
+        Ok(())
+    }
+
+    fn pop_local(&mut self, state: &State, local: usize) -> Result<()> {
+        let value = self.operands_pop()?;
+        *self
+            .cur_frame_mut()
+            .locals
+            .get_mut(local)
+            .ok_or_else(|| format_err!("failed to find local: {}", local))? = value;
         Ok(())
     }
 
@@ -839,6 +931,10 @@ impl Fiber {
             .ok_or_else(|| format_err!("failed to pop empty operand stack"))
     }
 
+    fn cur_frame(&self) -> &Frame {
+        self.frames.last().expect("`frames` should not be empty")
+    }
+
     fn cur_frame_mut(&mut self) -> &mut Frame {
         self.frames
             .last_mut()
@@ -846,7 +942,7 @@ impl Fiber {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Null,
     Integer(i64),
@@ -905,15 +1001,15 @@ impl From<&Constant> for Value {
 }
 
 struct Frame {
-    local_context: Context,
+    locals: Vec<Value>,
     cur_instruction: usize,
     chunk: usize,
 }
 
 impl Frame {
-    fn new(chunk: usize) -> Frame {
+    fn new(chunk: usize, locals: usize) -> Frame {
         Frame {
-            local_context: Context::new(),
+            locals: vec![Value::Null; locals],
             cur_instruction: 0,
             chunk,
         }
@@ -923,17 +1019,5 @@ impl Frame {
         let instruction = self.cur_instruction;
         self.cur_instruction += 1;
         instruction
-    }
-}
-
-struct Context {
-    variables: Vec<Value>,
-}
-
-impl Context {
-    fn new() -> Context {
-        Context {
-            variables: Vec::new(),
-        }
     }
 }
