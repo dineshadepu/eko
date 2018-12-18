@@ -2,6 +2,10 @@ use std::io::{Cursor, ErrorKind, Read};
 
 use failure::{bail, format_err, Error};
 
+use crate::pool::Pool;
+
+mod pool;
+
 type Result<T> = std::result::Result<T, Error>;
 
 pub struct Engine {
@@ -43,7 +47,7 @@ impl<'a> Compiler<'a> {
         let expression = parser.expression()?;
         let mut chunk = Chunk::new();
         Generator::new(&mut self.state).expression(&mut chunk, expression);
-        Ok(self.state.chunks.push_unchecked(chunk))
+        Ok(self.state.chunks.push(chunk))
     }
 }
 
@@ -139,7 +143,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "false" => Token::Boolean(false),
             "and" => Token::And,
             "or" => Token::Or,
-            _ => Token::Identifier(self.state.symbols.push(buf)),
+            _ => Token::Identifier(self.state.symbols.insert(buf)),
         };
         Ok(token)
     }
@@ -460,37 +464,6 @@ impl State {
     }
 }
 
-struct Pool<T>(Vec<T>);
-
-impl<T> Pool<T> {
-    fn new() -> Pool<T> {
-        Pool(Vec::new())
-    }
-
-    fn push_unchecked(&mut self, item: T) -> usize {
-        let index = self.0.len();
-        self.0.push(item);
-        index
-    }
-
-    fn get(&self, index: usize) -> Option<&T> {
-        self.0.get(index)
-    }
-}
-
-impl<T: PartialEq> Pool<T> {
-    fn push(&mut self, item: T) -> usize {
-        if let Some(index) = self.get_index(&item) {
-            return index;
-        }
-        self.push_unchecked(item)
-    }
-
-    fn get_index(&self, item: &T) -> Option<usize> {
-        self.0.iter().position(|ref i| i == &item)
-    }
-}
-
 #[derive(Debug)]
 struct Chunk {
     instructions: Vec<Instruction>,
@@ -584,6 +557,12 @@ enum Constant {
     Float(f64),
 }
 
+impl From<i64> for Constant {
+    fn from(i: i64) -> Constant {
+        Constant::Integer(i)
+    }
+}
+
 struct Generator<'a> {
     state: &'a mut State,
 }
@@ -598,7 +577,7 @@ impl<'a> Generator<'a> {
         for statement in block.statements {
             self.statement(&mut chunk, statement);
         }
-        self.state.chunks.push_unchecked(chunk)
+        self.state.chunks.push(chunk)
     }
 
     fn statement(&mut self, chunk: &mut Chunk, statement: Statement) {
@@ -613,14 +592,11 @@ impl<'a> Generator<'a> {
     fn expression(&mut self, chunk: &mut Chunk, expression: Expression) {
         match expression {
             Expression::Integer(integer) => {
-                let constant = self
-                    .state
-                    .constants
-                    .push_unchecked(Constant::Integer(integer));
+                let constant = self.state.constants.insert(Constant::Integer(integer));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Float(float) => {
-                let constant = self.state.constants.push_unchecked(Constant::Float(float));
+                let constant = self.state.constants.push(Constant::Float(float));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Boolean(boolean) => {
