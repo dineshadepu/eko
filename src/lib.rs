@@ -24,7 +24,7 @@ impl Engine {
         let mut compiler = Compiler::new(&mut self.state);
         let entry = compiler.compile_str(source)?;
         let mut fiber = Fiber::new(entry);
-        fiber.finish(&mut self.state)?;
+        fiber.finish(&self.state)?;
         fiber.operands_pop()
     }
 }
@@ -47,7 +47,7 @@ impl<'a> Compiler<'a> {
         let mut parser = Parser::new(&mut lexer);
         let expression = parser.expression()?;
         let mut chunk = Chunk::new();
-        Generator::new(&mut self.state).expression(&mut chunk, expression);
+        Generator::new(&mut self.state).expression(&mut chunk, expression)?;
         Ok(self.state.chunks.push(chunk))
     }
 }
@@ -165,7 +165,7 @@ impl<'a, R: Read> Lexer<'a, R> {
         if self.peek.is_none() {
             self.peek = read_single_byte(&mut self.source)?;
         }
-        Ok(self.peek.clone())
+        Ok(self.peek)
     }
 
     fn source_advance(&mut self) -> Result<u8> {
@@ -578,7 +578,7 @@ impl Closed {
     const CLOSED_BITS: usize = size_of::<usize>() - 2;
 
     fn new(parents: usize, closed: usize) -> Closed {
-        Closed(parents << Self::CLOSED_BITS + closed)
+        Closed((parents << Self::CLOSED_BITS) + closed)
     }
 
     fn parents(&self) -> usize {
@@ -701,7 +701,7 @@ impl Fiber {
     }
 
     fn finish(&mut self, state: &State) -> Result<()> {
-        while let Some(_) = self.step(state)? {}
+        while self.step(state)?.is_some() {}
         Ok(())
     }
 

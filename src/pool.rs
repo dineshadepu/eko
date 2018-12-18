@@ -39,7 +39,7 @@ impl<T: PartialEq> Pool<T> {
         if let Some(index) = self.get_by_value(value) {
             Entry::Occupied(OccupiedEntry {
                 index,
-                value: self.0.get(index).unwrap(),
+                value: &self.0[index],
             })
         } else {
             Entry::Vacant(VacantEntry { pool: self })
