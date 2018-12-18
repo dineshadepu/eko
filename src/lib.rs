@@ -1,4 +1,5 @@
 use std::io::{Cursor, ErrorKind, Read};
+use std::mem::size_of;
 
 use failure::{bail, format_err, Error};
 
@@ -348,6 +349,7 @@ impl<'a, R: Read> Parser<'a, R> {
             Token::Integer(integer) => Expression::Integer(integer),
             Token::Float(integer) => Expression::Float(integer),
             Token::Boolean(boolean) => Expression::Boolean(boolean),
+            Token::Identifier(identifier) => Expression::Identifier(identifier),
             token => bail!("unexpected token: '{:?}'", token),
         };
         Ok(expression)
@@ -387,6 +389,7 @@ enum Expression {
     Integer(i64),
     Float(f64),
     Boolean(bool),
+    Identifier(usize),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),
 }
@@ -466,12 +469,24 @@ impl State {
 
 #[derive(Debug)]
 struct Chunk {
+    parent: Option<usize>,
+    identifiers: Pool<usize>,
     instructions: Vec<Instruction>,
 }
 
 impl Chunk {
     fn new() -> Chunk {
         Chunk {
+            parent: None,
+            identifiers: Pool::new(),
+            instructions: Vec::new(),
+        }
+    }
+
+    fn with_parent(parent: usize) -> Chunk {
+        Chunk {
+            parent: Some(parent),
+            identifiers: Pool::new(),
             instructions: Vec::new(),
         }
     }
@@ -483,6 +498,11 @@ enum Instruction {
     PushBoolean(bool),
     PushNull,
     Pop,
+
+    PushLocal(usize),
+    PushClosed(Closed),
+    PopLocal(usize),
+    PopClosed(Closed),
 
     Add,
     Subtract,
@@ -551,6 +571,25 @@ impl From<Unary> for Instruction {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Closed(usize);
+
+impl Closed {
+    const CLOSED_BITS: usize = size_of::<usize>() - 2;
+
+    fn new(parents: usize, closed: usize) -> Closed {
+        Closed(parents << Self::CLOSED_BITS + closed)
+    }
+
+    fn parents(&self) -> usize {
+        self.0 >> Self::CLOSED_BITS
+    }
+
+    fn closed(&self) -> usize {
+        self.0 % (1 << Self::CLOSED_BITS)
+    }
+}
+
 #[derive(PartialEq)]
 enum Constant {
     Integer(i64),
@@ -572,46 +611,79 @@ impl<'a> Generator<'a> {
         Generator { state }
     }
 
-    fn block(&mut self, block: Block) -> usize {
+    fn block(&mut self, block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
         for statement in block.statements {
-            self.statement(&mut chunk, statement);
+            self.statement(&mut chunk, statement)?;
         }
-        self.state.chunks.push(chunk)
+        Ok(self.state.chunks.push(chunk))
     }
 
-    fn statement(&mut self, chunk: &mut Chunk, statement: Statement) {
+    fn statement(&mut self, chunk: &mut Chunk, statement: Statement) -> Result<()> {
         match statement {
             Statement::Expression(expression) => {
-                self.expression(chunk, expression);
+                self.expression(chunk, expression)?;
                 chunk.instructions.push(Instruction::Pop);
             }
         }
+        Ok(())
     }
 
-    fn expression(&mut self, chunk: &mut Chunk, expression: Expression) {
+    fn expression(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
         match expression {
             Expression::Integer(integer) => {
                 let constant = self.state.constants.insert(Constant::Integer(integer));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Float(float) => {
-                let constant = self.state.constants.push(Constant::Float(float));
+                let constant = self.state.constants.insert(Constant::Float(float));
                 chunk.instructions.push(Instruction::PushConstant(constant));
             }
             Expression::Boolean(boolean) => {
                 chunk.instructions.push(Instruction::PushBoolean(boolean));
             }
             Expression::Binary(binary, left, right) => {
-                self.expression(chunk, *left);
-                self.expression(chunk, *right);
+                self.expression(chunk, *left)?;
+                self.expression(chunk, *right)?;
                 chunk.instructions.push(binary.into());
             }
             Expression::Unary(unary, expression) => {
-                self.expression(chunk, *expression);
+                self.expression(chunk, *expression)?;
                 chunk.instructions.push(unary.into());
             }
+            Expression::Identifier(identifier) => {
+                if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+                    chunk.instructions.push(Instruction::PushLocal(local));
+                    return Ok(());
+                }
+
+                let mut parents = 0;
+                let mut cur_parent = chunk.parent;
+                while let Some(parent) = cur_parent {
+                    let chunk = self
+                        .state
+                        .chunks
+                        .get_mut(parent)
+                        .ok_or_else(|| format_err!("failed to find chunk: {}", parent))?;
+                    if let Some(closed) = chunk.identifiers.get_by_value(&identifier) {
+                        chunk
+                            .instructions
+                            .push(Instruction::PushClosed(Closed::new(parents, closed)));
+                        return Ok(());
+                    }
+                    parents += 1;
+                    cur_parent = chunk.parent;
+                }
+
+                let symbol = self
+                    .state
+                    .symbols
+                    .get(identifier)
+                    .ok_or_else(|| format_err!("failed to find symbol: '{}'", identifier))?;
+                bail!("identifier not declared: {}", symbol)
+            }
         }
+        Ok(())
     }
 }
 

@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Pool<T>(Vec<T>);
 
 impl<T> Pool<T> {
@@ -13,6 +14,10 @@ impl<T> Pool<T> {
 
     pub fn get(&self, index: usize) -> Option<&T> {
         self.0.get(index)
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.0.get_mut(index)
     }
 }
 
@@ -39,6 +44,12 @@ impl<T: PartialEq> Pool<T> {
         } else {
             Entry::Vacant(VacantEntry { pool: self })
         }
+    }
+}
+
+impl<T: Clone> Clone for Pool<T> {
+    fn clone(&self) -> Self {
+        Pool(self.0.clone())
     }
 }
 
