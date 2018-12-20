@@ -59,6 +59,17 @@ fn newline() {
 }
 
 #[test]
+fn assignment() {
+    let source = "
+        var one
+        one = 2 * 2
+        one
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate_expression(source).unwrap(), 4.into());
+}
+
+#[test]
 fn local() {
     let source = "
         var one = 1 + 4

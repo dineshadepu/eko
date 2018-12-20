@@ -266,25 +266,39 @@ impl<'a, R: Read> Parser<'a, R> {
             None => return Err(self.lexer_advance().unwrap_err()),
         };
         let statement = match token {
-            Token::Var => Statement::Declaration(self.declaration_var()?),
+            Token::Var => Statement::VarDeclaration(self.var_declaration()?),
             _ => Statement::Expression(self.expression()?),
         };
         Ok(statement)
     }
 
-    fn declaration_var(&mut self) -> Result<Declaration> {
+    fn var_declaration(&mut self) -> Result<Expression> {
         self.lexer_advance()?;
-        let identifier = self.expression()?;
-        match self.lexer_advance()? {
-            Token::Assign => {}
-            token => bail!("unexpected token: '{:?}'", token),
-        }
-        let expression = self.expression()?;
-        Ok(Declaration::Var(identifier, expression))
+        Ok(self.expression()?)
     }
 
     fn expression(&mut self) -> Result<Expression> {
-        self.logical()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expression> {
+        let mut left = self.logical()?;
+        loop {
+            let token = match self.lexer_peek()? {
+                Some(token) => token,
+                None => return Ok(left),
+            };
+            match token {
+                Token::Assign => {}
+                _ => return Ok(left),
+            }
+            match left {
+                Expression::Identifier(_) => {}
+                _ => bail!("invalid left expression in assignment"),
+            };
+            self.lexer_advance()?;
+            left = Expression::Assignment(left.into(), self.logical()?.into());
+        }
     }
 
     fn logical(&mut self) -> Result<Expression> {
@@ -405,13 +419,20 @@ impl Block {
 }
 
 enum Statement {
-    Declaration(Declaration),
+    VarDeclaration(Expression),
     Expression(Expression),
 }
 
-#[derive(Debug)]
-enum Declaration {
-    Var(Expression, Expression),
+impl Statement {
+    fn is_expression(&self) -> bool {
+        use self::Statement::*;
+
+        if let Expression(_) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -420,6 +441,7 @@ enum Expression {
     Float(f64),
     Boolean(bool),
     Identifier(usize),
+    Assignment(Box<Expression>, Box<Expression>),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),
 }
@@ -641,15 +663,25 @@ impl<'a> Generator<'a> {
         Generator { state }
     }
 
-    fn block(&mut self, block: Block) -> Result<usize> {
+    fn block(&mut self, mut block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
+        let last_statement = match block.statements.pop() {
+            Some(statement) => statement,
+            None => return Ok(self.state.chunks.push(chunk)),
+        };
         for statement in block.statements {
             self.statement(&mut chunk, statement)?;
         }
 
-        // The last expression should be returned, instead of being popped.
-        if let Some(Instruction::Pop) = chunk.instructions.last() {
+        // If the last statement is an expression, the last pop instruction
+        // should be discarded, to preserve the return value. Otherwise, a
+        // null value should be inserted as the return value.
+        if last_statement.is_expression() {
+            self.statement(&mut chunk, last_statement)?;
             chunk.instructions.pop();
+        } else {
+            self.statement(&mut chunk, last_statement)?;
+            chunk.instructions.push(Instruction::PushNull);
         }
 
         Ok(self.state.chunks.push(chunk))
@@ -657,8 +689,8 @@ impl<'a> Generator<'a> {
 
     fn statement(&mut self, chunk: &mut Chunk, statement: Statement) -> Result<()> {
         match statement {
-            Statement::Declaration(declaration) => {
-                self.declaration(chunk, declaration)?;
+            Statement::VarDeclaration(expression) => {
+                self.var_declaration(chunk, expression)?;
             }
             Statement::Expression(expression) => {
                 self.expression(chunk, expression)?;
@@ -668,25 +700,23 @@ impl<'a> Generator<'a> {
         Ok(())
     }
 
-    fn declaration(&mut self, chunk: &mut Chunk, declaration: Declaration) -> Result<()> {
-        match declaration {
-            Declaration::Var(identifier, expression) => {
-                let identifier = match identifier {
-                    Expression::Identifier(identifier) => identifier,
-                    _ => bail!("invalid left expression in assignment"),
-                };
-                if chunk.identifiers.get_by_value(&identifier).is_some() {
-                    let symbol =
-                        self.state.symbols.get(identifier).ok_or_else(|| {
-                            format_err!("failed to find symbol: '{}'", identifier)
-                        })?;
-                    bail!("variable already declared: {}", symbol);
-                }
-                self.expression(chunk, expression)?;
-                chunk
-                    .instructions
-                    .push(Instruction::PopLocal(chunk.identifiers.insert(identifier)))
+    fn var_declaration(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
+        match expression {
+            Expression::Identifier(identifier) => {
+                let local = self.define_local(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PushNull);
+                chunk.instructions.push(Instruction::PopLocal(local));
             }
+            Expression::Assignment(left, right) => {
+                let identifier = match *left {
+                    Expression::Identifier(identifier) => identifier,
+                    _ => bail!("invalid left expression in var declaration"),
+                };
+                self.expression(chunk, *right)?;
+                let local = self.define_local(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PopLocal(local));
+            }
+            _ => bail!("invalid expression in var declaration"),
         }
         Ok(())
     }
@@ -704,6 +734,22 @@ impl<'a> Generator<'a> {
             Expression::Boolean(boolean) => {
                 chunk.instructions.push(Instruction::PushBoolean(boolean));
             }
+            Expression::Assignment(left, right) => {
+                let identifier = match *left {
+                    Expression::Identifier(identifier) => identifier,
+                    _ => bail!("invalid left expression in var declaration"),
+                };
+                self.expression(chunk, *right)?;
+
+                if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+                    chunk.instructions.push(Instruction::PopLocal(local));
+                    chunk.instructions.push(Instruction::PushLocal(local));
+                    return Ok(());
+                }
+                let closed = self.search_closed(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PopClosed(closed));
+                chunk.instructions.push(Instruction::PushClosed(closed));
+            }
             Expression::Binary(binary, left, right) => {
                 self.expression(chunk, *left)?;
                 self.expression(chunk, *right)?;
@@ -718,34 +764,47 @@ impl<'a> Generator<'a> {
                     chunk.instructions.push(Instruction::PushLocal(local));
                     return Ok(());
                 }
-
-                let mut parents = 0;
-                let mut cur_parent = chunk.parent;
-                while let Some(parent) = cur_parent {
-                    let chunk = self
-                        .state
-                        .chunks
-                        .get_mut(parent)
-                        .ok_or_else(|| format_err!("failed to find chunk: {}", parent))?;
-                    if let Some(closed) = chunk.identifiers.get_by_value(&identifier) {
-                        chunk
-                            .instructions
-                            .push(Instruction::PushClosed(Closed::new(parents, closed)));
-                        return Ok(());
-                    }
-                    parents += 1;
-                    cur_parent = chunk.parent;
-                }
-
-                let symbol = self
-                    .state
-                    .symbols
-                    .get(identifier)
-                    .ok_or_else(|| format_err!("failed to find symbol: '{}'", identifier))?;
-                bail!("identifier not declared: {}", symbol)
+                let closed = self.search_closed(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PushClosed(closed));
             }
         }
         Ok(())
+    }
+
+    fn define_local(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<usize> {
+        if chunk.identifiers.get_by_value(&identifier).is_some() {
+            let symbol = self
+                .state
+                .symbols
+                .get(identifier)
+                .ok_or_else(|| format_err!("failed to find symbol: '{}'", identifier))?;
+            bail!("variable already declared: '{}'", symbol);
+        }
+        Ok(chunk.identifiers.insert(identifier))
+    }
+
+    fn search_closed(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<Closed> {
+        let mut parents = 0;
+        let mut cur_parent = chunk.parent;
+        while let Some(parent) = cur_parent {
+            let chunk = self
+                .state
+                .chunks
+                .get_mut(parent)
+                .ok_or_else(|| format_err!("failed to find chunk: {}", parent))?;
+            if let Some(closed) = chunk.identifiers.get_by_value(&identifier) {
+                return Ok(Closed::new(parents, closed));
+            }
+            parents += 1;
+            cur_parent = chunk.parent;
+        }
+
+        let symbol = self
+            .state
+            .symbols
+            .get(identifier)
+            .ok_or_else(|| format_err!("failed to find symbol: '{}'", identifier))?;
+        bail!("identifier not declared: {}", symbol)
     }
 }
 
@@ -799,8 +858,8 @@ impl Fiber {
             PushNull => self.operands.push(Value::Null),
             Pop => self.pop()?,
 
-            PushLocal(local) => self.push_local(state, *local)?,
-            PopLocal(local) => self.pop_local(state, *local)?,
+            PushLocal(local) => self.push_local(*local)?,
+            PopLocal(local) => self.pop_local(*local)?,
 
             instruction if instruction.is_binary() => self.binary(*instruction)?,
             instruction if instruction.is_unary() => self.unary(*instruction)?,
@@ -825,7 +884,7 @@ impl Fiber {
         Ok(())
     }
 
-    fn push_local(&mut self, state: &State, local: usize) -> Result<()> {
+    fn push_local(&mut self, local: usize) -> Result<()> {
         let value = self
             .cur_frame()
             .locals
@@ -835,7 +894,7 @@ impl Fiber {
         Ok(())
     }
 
-    fn pop_local(&mut self, state: &State, local: usize) -> Result<()> {
+    fn pop_local(&mut self, local: usize) -> Result<()> {
         let value = self.operands_pop()?;
         *self
             .cur_frame_mut()
