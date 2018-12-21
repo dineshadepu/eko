@@ -4,7 +4,7 @@ use failure::{bail, format_err};
 
 use crate::{Result, State};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Token {
     Add,
     Subtract,
@@ -18,6 +18,11 @@ pub(crate) enum Token {
     Greater,
     GreaterEqual,
 
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+
     And,
     Or,
     Not,
@@ -29,6 +34,7 @@ pub(crate) enum Token {
     Identifier(usize),
 
     Var,
+    If,
 
     Newline,
 }
@@ -102,6 +108,10 @@ impl<'a, R: Read> Lexer<'a, R> {
             (b'<', _) => Token::Less,
             (b'>', Some(b'=')) => Token::GreaterEqual,
             (b'>', _) => Token::Greater,
+            (b'(', _) => Token::LeftParen,
+            (b')', _) => Token::RightParen,
+            (b'{', _) => Token::LeftBrace,
+            (b'}', _) => Token::RightBrace,
             _ => unimplemented!("operator not yet implemented"),
         };
         Ok(token)
@@ -126,6 +136,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "and" => Token::And,
             "or" => Token::Or,
             "var" => Token::Var,
+            "if" => Token::If,
             _ => Token::Identifier(self.state.symbols.insert(buf)),
         };
         Ok(token)
@@ -184,7 +195,7 @@ fn is_digit(byte: u8) -> bool {
 
 fn is_operator(byte: u8) -> bool {
     match byte {
-        b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' => true,
+        b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' | b'(' | b')' | b'{' | b'}' => true,
         _ => false,
     }
 }

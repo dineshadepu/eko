@@ -55,7 +55,10 @@ impl Fiber {
             .get(frame.step());
         let instruction = match instruction {
             Some(instruction) => instruction,
-            None => return Ok(None),
+            None => {
+                self.frames.pop();
+                return Ok(None);
+            }
         };
 
         match instruction {
@@ -69,6 +72,9 @@ impl Fiber {
 
             instruction if instruction.is_binary() => self.binary(*instruction)?,
             instruction if instruction.is_unary() => self.unary(*instruction)?,
+
+            JumpFalsey(instruction) => self.jump_falsey(*instruction)?,
+            Jump(instruction) => self.jump(*instruction),
 
             _ => unimplemented!("instruction not yet implemented"),
         }
@@ -188,6 +194,18 @@ impl Fiber {
 
         self.operands.push(result);
         Ok(())
+    }
+
+    fn jump_falsey(&mut self, instruction: usize) -> Result<()> {
+        let value = self.operands_pop()?;
+        if !value.is_truthy() {
+            self.cur_frame_mut().cur_instruction = instruction;
+        }
+        Ok(())
+    }
+
+    fn jump(&mut self, instruction: usize) {
+        self.cur_frame_mut().cur_instruction = instruction;
     }
 
     fn operands_pop(&mut self) -> Result<Value> {

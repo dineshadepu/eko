@@ -1,4 +1,4 @@
-use eko::Engine;
+use eko::{Engine, Value};
 
 #[test]
 fn add() {
@@ -73,4 +73,15 @@ fn local() {
     ";
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate(source).unwrap(), 11.into());
+}
+
+#[test]
+fn r#if() {
+    let source = "
+        if true and false {
+            1 + 1
+        }
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate(source).unwrap(), Value::Null);
 }

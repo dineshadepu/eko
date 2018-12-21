@@ -1,5 +1,6 @@
 use crate::Token;
 
+#[derive(Debug)]
 pub(crate) struct Block {
     pub(crate) statements: Vec<Statement>,
 }
@@ -10,6 +11,7 @@ impl Block {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum Statement {
     VarDeclaration(Expression),
     Expression(Expression),
@@ -36,6 +38,7 @@ pub(crate) enum Expression {
     Assignment(Box<Expression>, Box<Expression>),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),
+    If(Box<Expression>, Block, Option<Block>),
 }
 
 #[derive(Debug)]

@@ -23,6 +23,17 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(Block::new(statements))
     }
 
+    fn block_with_terminal(&mut self, terminal: &Token) -> Result<Block> {
+        let mut statements = Vec::new();
+        while let Some(token) = self.lexer_peek()? {
+            if token == terminal {
+                return Ok(Block::new(statements));
+            }
+            statements.push(self.statement()?);
+        }
+        Ok(Block::new(statements))
+    }
+
     fn statement(&mut self) -> Result<Statement> {
         let token = match self.lexer_peek()? {
             Some(token) => token,
@@ -36,12 +47,30 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn var_declaration(&mut self) -> Result<Expression> {
-        self.lexer_advance()?;
+        assert_eq!(self.lexer_advance()?, Token::Var);
         Ok(self.expression()?)
     }
 
     fn expression(&mut self) -> Result<Expression> {
-        self.assignment()
+        let token = self
+            .lexer_peek()?
+            .cloned()
+            .ok_or_else(|| self.lexer_advance().unwrap_err())?;
+        match token {
+            Token::If => self.r#if(),
+            _ => self.assignment(),
+        }
+    }
+
+    fn r#if(&mut self) -> Result<Expression> {
+        assert_eq!(self.lexer_advance()?, Token::If);
+        let condition = self.expression()?;
+        self.lexer_advance_expect(Token::LeftBrace)?;
+        self.newlines()?;
+        let success = self.block_with_terminal(&Token::RightBrace)?;
+        self.newlines()?;
+        self.lexer_advance_expect(Token::RightBrace)?;
+        Ok(Expression::If(condition.into(), success, None))
     }
 
     fn assignment(&mut self) -> Result<Expression> {
@@ -151,9 +180,21 @@ impl<'a, R: Read> Parser<'a, R> {
             Token::Float(integer) => Expression::Float(integer),
             Token::Boolean(boolean) => Expression::Boolean(boolean),
             Token::Identifier(identifier) => Expression::Identifier(identifier),
+            Token::LeftParen => {
+                let expression = self.expression()?;
+                self.lexer_advance_expect(Token::RightParen)?;
+                expression
+            }
             token => bail!("unexpected token: '{:?}'", token),
         };
         Ok(expression)
+    }
+
+    fn newlines(&mut self) -> Result<()> {
+        while self.lexer_peek()? == Some(&Token::Newline) {
+            self.lexer_advance()?;
+        }
+        Ok(())
     }
 
     fn lexer_peek(&mut self) -> Result<Option<&Token>> {
@@ -161,6 +202,19 @@ impl<'a, R: Read> Parser<'a, R> {
             self.peek = self.lexer.next()?;
         }
         Ok(self.peek.as_ref())
+    }
+
+    fn lexer_advance_expect(&mut self, expect: Token) -> Result<()> {
+        let token = self.lexer_advance()?;
+        if token == expect {
+            Ok(())
+        } else {
+            Err(format_err!(
+                "unexpected token: '{:?}', expected: '{:?}'",
+                token,
+                expect
+            ))
+        }
     }
 
     fn lexer_advance(&mut self) -> Result<Token> {

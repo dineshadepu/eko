@@ -57,7 +57,7 @@ impl<'a> Compiler<'a> {
         let mut lexer = Lexer::new(&mut self.state, source);
         let mut parser = Parser::new(&mut lexer);
         let expression = parser.block()?;
-        Generator::new(&mut self.state).block(expression)
+        Generator::new(&mut self.state).generate(expression)
     }
 }
 

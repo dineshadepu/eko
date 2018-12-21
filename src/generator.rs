@@ -57,6 +57,9 @@ pub(crate) enum Instruction {
     And,
     Or,
     Not,
+
+    JumpFalsey(usize),
+    Jump(usize),
 }
 
 impl Instruction {
@@ -143,7 +146,7 @@ impl<'a> Generator<'a> {
         Generator { state }
     }
 
-    pub(crate) fn block(&mut self, mut block: Block) -> Result<usize> {
+    pub(crate) fn generate(&mut self, mut block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
         let last_statement = match block.statements.pop() {
             Some(statement) => statement,
@@ -164,7 +167,17 @@ impl<'a> Generator<'a> {
             chunk.instructions.push(Instruction::PushNull);
         }
 
+        println!("{:?}", chunk);
+
         Ok(self.state.chunks.push(chunk))
+    }
+
+    fn block(&mut self, chunk: &mut Chunk, block: Block) -> Result<()> {
+        for statement in block.statements {
+            self.statement(chunk, statement)?;
+        }
+        chunk.instructions.pop();
+        Ok(())
     }
 
     fn statement(&mut self, chunk: &mut Chunk, statement: Statement) -> Result<()> {
@@ -246,6 +259,25 @@ impl<'a> Generator<'a> {
                 }
                 let closed = self.search_closed(chunk, identifier)?;
                 chunk.instructions.push(Instruction::PushClosed(closed));
+            }
+            Expression::If(condition, success, failure) => {
+                self.expression(chunk, *condition)?;
+                let failure_jump = chunk.instructions.len();
+                self.block(chunk, success)?;
+                let success_jump = chunk.instructions.len() + 1;
+                chunk.instructions.insert(
+                    failure_jump,
+                    Instruction::JumpFalsey(chunk.instructions.len() + 2),
+                );
+                if let Some(failure) = failure {
+                    self.block(chunk, failure)?;
+                } else {
+                    chunk.instructions.push(Instruction::PushNull);
+                }
+                chunk.instructions.insert(
+                    success_jump,
+                    Instruction::Jump(chunk.instructions.len() + 1),
+                );
             }
         }
         Ok(())
