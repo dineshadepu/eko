@@ -26,7 +26,7 @@ impl Engine {
         }
     }
 
-    pub fn evaluate_expression(&mut self, source: &str) -> Result<Value> {
+    pub fn evaluate(&mut self, source: &str) -> Result<Value> {
         let mut compiler = Compiler::new(&mut self.state);
         let entry = compiler.compile_str(source)?;
         let mut fiber = Fiber::new(&self.state, entry)?;
