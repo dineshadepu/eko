@@ -80,23 +80,24 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn assignment(&mut self) -> Result<Expression> {
-        let mut left = self.logical()?;
-        loop {
-            let token = match self.lexer_peek()? {
-                Some(token) => token,
-                None => return Ok(left),
-            };
-            match token {
-                Token::Assign => {}
-                _ => return Ok(left),
-            }
-            match left {
-                Expression::Identifier(_) => {}
-                _ => bail!("invalid left expression in assignment"),
-            };
-            self.lexer_advance()?;
-            left = Expression::Assignment(left.into(), self.logical()?.into());
+        let left = self.logical()?;
+        let token = match self.lexer_peek()? {
+            Some(token) => token,
+            None => return Ok(left),
+        };
+        match token {
+            Token::Assign => {}
+            _ => return Ok(left),
         }
+        match left {
+            Expression::Identifier(_) => {}
+            _ => bail!("invalid left expression in assignment"),
+        };
+        self.lexer_advance()?;
+        Ok(Expression::Assignment(
+            left.into(),
+            self.expression()?.into(),
+        ))
     }
 
     fn logical(&mut self) -> Result<Expression> {

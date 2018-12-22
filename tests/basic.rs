@@ -113,3 +113,17 @@ fn if_else_if_else() {
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate(source).unwrap(), 22.into());
 }
+
+#[test]
+fn if_as_expression() {
+    let source = "
+        var twenty_two = if 39 > 15 {
+            21 + 1
+        } else {
+            10 * 2
+        }
+        twenty_two * 2
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate(source).unwrap(), 44.into());
+}
