@@ -2,30 +2,12 @@ use crate::Token;
 
 #[derive(Debug)]
 pub(crate) struct Block {
-    pub(crate) statements: Vec<Statement>,
+    pub(crate) expressions: Vec<Expression>,
 }
 
 impl Block {
-    pub(crate) fn new(statements: Vec<Statement>) -> Block {
-        Block { statements }
-    }
-}
-
-#[derive(Debug)]
-pub(crate) enum Statement {
-    VarDeclaration(Expression),
-    Expression(Expression),
-}
-
-impl Statement {
-    pub(crate) fn is_expression(&self) -> bool {
-        use self::Statement::*;
-
-        if let Expression(_) = self {
-            true
-        } else {
-            false
-        }
+    pub(crate) fn new(expressions: Vec<Expression>) -> Block {
+        Block { expressions }
     }
 }
 
@@ -35,6 +17,7 @@ pub(crate) enum Expression {
     Float(f64),
     Boolean(bool),
     Identifier(usize),
+    VarDeclaration(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),

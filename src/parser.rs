@@ -16,39 +16,22 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     pub(crate) fn block(&mut self) -> Result<Block> {
-        let mut statements = Vec::new();
+        let mut expressions = Vec::new();
         while self.lexer_peek()?.is_some() {
-            statements.push(self.statement()?);
+            expressions.push(self.expression()?);
         }
-        Ok(Block::new(statements))
+        Ok(Block::new(expressions))
     }
 
     fn block_with_terminal(&mut self, terminal: &Token) -> Result<Block> {
-        let mut statements = Vec::new();
+        let mut expressions = Vec::new();
         while let Some(token) = self.lexer_peek()? {
             if token == terminal {
-                return Ok(Block::new(statements));
+                return Ok(Block::new(expressions));
             }
-            statements.push(self.statement()?);
+            expressions.push(self.expression()?);
         }
-        Ok(Block::new(statements))
-    }
-
-    fn statement(&mut self) -> Result<Statement> {
-        let token = match self.lexer_peek()? {
-            Some(token) => token,
-            None => return Err(self.lexer_advance().unwrap_err()),
-        };
-        let statement = match token {
-            Token::Var => Statement::VarDeclaration(self.var_declaration()?),
-            _ => Statement::Expression(self.expression()?),
-        };
-        Ok(statement)
-    }
-
-    fn var_declaration(&mut self) -> Result<Expression> {
-        assert_eq!(self.lexer_advance()?, Token::Var);
-        Ok(self.expression()?)
+        Ok(Block::new(expressions))
     }
 
     fn expression(&mut self) -> Result<Expression> {
@@ -57,9 +40,15 @@ impl<'a, R: Read> Parser<'a, R> {
             .cloned()
             .ok_or_else(|| self.lexer_advance().unwrap_err())?;
         match token {
+            Token::Var => self.var_declaration(),
             Token::If => self.r#if(),
             _ => self.assignment(),
         }
+    }
+
+    fn var_declaration(&mut self) -> Result<Expression> {
+        assert_eq!(self.lexer_advance()?, Token::Var);
+        Ok(Expression::VarDeclaration(self.expression()?.into()))
     }
 
     fn r#if(&mut self) -> Result<Expression> {

@@ -146,71 +146,19 @@ impl<'a> Generator<'a> {
         Generator { state }
     }
 
-    pub(crate) fn generate(&mut self, mut block: Block) -> Result<usize> {
+    pub(crate) fn generate(&mut self, block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
-        let last_statement = match block.statements.pop() {
-            Some(statement) => statement,
-            None => return Ok(self.state.chunks.push(chunk)),
-        };
-        for statement in block.statements {
-            self.statement(&mut chunk, statement)?;
-        }
-
-        // If the last statement is an expression, the last pop instruction
-        // should be discarded, to preserve the return value. Otherwise, a
-        // null value should be inserted as the return value.
-        if last_statement.is_expression() {
-            self.statement(&mut chunk, last_statement)?;
-            chunk.instructions.pop();
-        } else {
-            self.statement(&mut chunk, last_statement)?;
-            chunk.instructions.push(Instruction::PushNull);
-        }
-
+        self.block(&mut chunk, block)?;
         println!("{:?}", chunk);
-
         Ok(self.state.chunks.push(chunk))
     }
 
     fn block(&mut self, chunk: &mut Chunk, block: Block) -> Result<()> {
-        for statement in block.statements {
-            self.statement(chunk, statement)?;
+        for expression in block.expressions {
+            self.expression(chunk, expression)?;
+            chunk.instructions.push(Instruction::Pop);
         }
         chunk.instructions.pop();
-        Ok(())
-    }
-
-    fn statement(&mut self, chunk: &mut Chunk, statement: Statement) -> Result<()> {
-        match statement {
-            Statement::VarDeclaration(expression) => {
-                self.var_declaration(chunk, expression)?;
-            }
-            Statement::Expression(expression) => {
-                self.expression(chunk, expression)?;
-                chunk.instructions.push(Instruction::Pop);
-            }
-        }
-        Ok(())
-    }
-
-    fn var_declaration(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
-        match expression {
-            Expression::Identifier(identifier) => {
-                let local = self.define_local(chunk, identifier)?;
-                chunk.instructions.push(Instruction::PushNull);
-                chunk.instructions.push(Instruction::PopLocal(local));
-            }
-            Expression::Assignment(left, right) => {
-                let identifier = match *left {
-                    Expression::Identifier(identifier) => identifier,
-                    _ => bail!("invalid left expression in var declaration"),
-                };
-                self.expression(chunk, *right)?;
-                let local = self.define_local(chunk, identifier)?;
-                chunk.instructions.push(Instruction::PopLocal(local));
-            }
-            _ => bail!("invalid expression in var declaration"),
-        }
         Ok(())
     }
 
@@ -260,6 +208,9 @@ impl<'a> Generator<'a> {
                 let closed = self.search_closed(chunk, identifier)?;
                 chunk.instructions.push(Instruction::PushClosed(closed));
             }
+            Expression::VarDeclaration(expression) => {
+                self.var_declaration(chunk, *expression)?;
+            }
             Expression::If(condition, success, failure) => {
                 self.expression(chunk, *condition)?;
                 let failure_jump = chunk.instructions.len();
@@ -283,6 +234,29 @@ impl<'a> Generator<'a> {
         Ok(())
     }
 
+    fn var_declaration(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
+        match expression {
+            Expression::Identifier(identifier) => {
+                let local = self.define_local(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PushNull);
+                chunk.instructions.push(Instruction::PopLocal(local));
+                chunk.instructions.push(Instruction::PushLocal(local));
+            }
+            Expression::Assignment(left, right) => {
+                let identifier = match *left {
+                    Expression::Identifier(identifier) => identifier,
+                    _ => bail!("invalid left expression in var declaration"),
+                };
+                self.expression(chunk, *right)?;
+                let local = self.define_local(chunk, identifier)?;
+                chunk.instructions.push(Instruction::PopLocal(local));
+                chunk.instructions.push(Instruction::PushLocal(local));
+            }
+            _ => bail!("invalid expression in var declaration"),
+        }
+        Ok(())
+    }
+
     fn define_local(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<usize> {
         if chunk.identifiers.get_by_value(&identifier).is_some() {
             let symbol = self
@@ -290,7 +264,7 @@ impl<'a> Generator<'a> {
                 .symbols
                 .get(identifier)
                 .ok_or_else(|| format_err!("failed to find symbol: '{}'", identifier))?;
-            bail!("variable already declared: '{}'", symbol);
+            bail!("identifier already declared: '{}'", symbol);
         }
         Ok(chunk.identifiers.insert(identifier))
     }
