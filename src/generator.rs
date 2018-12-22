@@ -164,6 +164,7 @@ impl<'a> Generator<'a> {
 
     fn expression(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
         match expression {
+            Expression::Null => chunk.instructions.push(Instruction::PushNull),
             Expression::Integer(integer) => self.constant(chunk, Constant::Integer(integer))?,
             Expression::Float(integer) => self.constant(chunk, Constant::Float(integer))?,
             Expression::Boolean(boolean) => self.boolean(chunk, boolean),

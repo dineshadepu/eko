@@ -13,6 +13,7 @@ impl Block {
 
 #[derive(Debug)]
 pub(crate) enum Expression {
+    Null,
     Integer(i64),
     Float(f64),
     Boolean(bool),

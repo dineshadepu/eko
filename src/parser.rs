@@ -183,6 +183,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
     fn term(&mut self) -> Result<Expression> {
         let expression = match self.lexer_advance()? {
+            Token::Null => Expression::Null,
             Token::Integer(integer) => Expression::Integer(integer),
             Token::Float(integer) => Expression::Float(integer),
             Token::Boolean(boolean) => Expression::Boolean(boolean),
