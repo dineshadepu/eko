@@ -15,7 +15,7 @@ impl<'a, R: Read> Parser<'a, R> {
         Parser { lexer, peek: None }
     }
 
-    pub(crate) fn block(&mut self) -> Result<Block> {
+    pub(crate) fn parse(&mut self) -> Result<Block> {
         let mut expressions = Vec::new();
         while self.lexer_peek()?.is_some() {
             expressions.push(self.expression()?);

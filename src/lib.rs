@@ -56,7 +56,7 @@ impl<'a> Compiler<'a> {
     fn compile<R: Read>(&mut self, source: R) -> Result<usize> {
         let mut lexer = Lexer::new(&mut self.state, source);
         let mut parser = Parser::new(&mut lexer);
-        let expression = parser.block()?;
+        let expression = parser.parse()?;
         Generator::new(&mut self.state).generate(expression)
     }
 }
