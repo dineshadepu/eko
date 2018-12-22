@@ -53,6 +53,15 @@ fn newline() {
 }
 
 #[test]
+fn newline_err() {
+    let source = "
+        1 + 4 * 5 22 / 4.0
+    ";
+    let mut engine = Engine::new();
+    assert!(engine.evaluate(source).is_err());
+}
+
+#[test]
 fn assignment() {
     let source = "
         var one
@@ -126,16 +135,4 @@ fn if_as_expression() {
     ";
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate(source).unwrap(), 44.into());
-}
-
-#[test]
-fn boom() {
-    let source = "
-        var one
-        if one {
-            var one
-        }
-    ";
-    let mut engine = Engine::new();
-    engine.evaluate(source).unwrap();
 }

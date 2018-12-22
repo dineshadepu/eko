@@ -64,7 +64,10 @@ impl<'a, R: Read> Lexer<'a, R> {
         };
 
         let token = match byte {
-            b'\n' => Token::Newline,
+            b'\n' => {
+                self.source_advance()?;
+                Token::Newline
+            }
             byte if is_digit(byte) => self.number()?,
             byte if is_operator(byte) => self.operator()?,
             byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
@@ -147,7 +150,8 @@ impl<'a, R: Read> Lexer<'a, R> {
     fn whitespace(&mut self) -> Result<()> {
         while let Some(byte) = self.source_peek()? {
             match byte {
-                b'\n' => {}
+                // Newlines are treated as tokens.
+                b'\n' => break,
                 byte if !is_whitespace(byte) => break,
                 _ => {}
             }
