@@ -127,3 +127,15 @@ fn if_as_expression() {
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate(source).unwrap(), 44.into());
 }
+
+#[test]
+fn boom() {
+    let source = "
+        var one
+        if one {
+            var one
+        }
+    ";
+    let mut engine = Engine::new();
+    engine.evaluate(source).unwrap();
+}
