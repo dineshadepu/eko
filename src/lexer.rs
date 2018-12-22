@@ -35,6 +35,7 @@ pub(crate) enum Token {
 
     Var,
     If,
+    Else,
 
     Newline,
 }
@@ -137,6 +138,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "or" => Token::Or,
             "var" => Token::Var,
             "if" => Token::If,
+            "else" => Token::Else,
             _ => Token::Identifier(self.state.symbols.insert(buf)),
         };
         Ok(token)

@@ -34,6 +34,15 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(Block::new(expressions))
     }
 
+    fn braced_block(&mut self) -> Result<Block> {
+        self.lexer_advance_expect(Token::LeftBrace)?;
+        self.newlines()?;
+        let block = self.block_with_terminal(&Token::RightBrace)?;
+        self.newlines()?;
+        assert_eq!(self.lexer_advance()?, Token::RightBrace);
+        Ok(block)
+    }
+
     fn expression(&mut self) -> Result<Expression> {
         let token = self
             .lexer_peek()?
@@ -54,12 +63,20 @@ impl<'a, R: Read> Parser<'a, R> {
     fn r#if(&mut self) -> Result<Expression> {
         assert_eq!(self.lexer_advance()?, Token::If);
         let condition = self.expression()?;
-        self.lexer_advance_expect(Token::LeftBrace)?;
-        self.newlines()?;
-        let success = self.block_with_terminal(&Token::RightBrace)?;
-        self.newlines()?;
-        self.lexer_advance_expect(Token::RightBrace)?;
-        Ok(Expression::If(condition.into(), success, None))
+
+        let success = self.braced_block()?;
+
+        let mut failure = None;
+        if let Some(Token::Else) = self.lexer_peek()? {
+            assert_eq!(self.lexer_advance()?, Token::Else);
+            if let Some(Token::If) = self.lexer_peek()? {
+                failure = Some(Block::new(vec![self.r#if()?]));
+            } else {
+                failure = Some(self.braced_block()?);
+            }
+        }
+
+        Ok(Expression::If(condition.into(), success, failure))
     }
 
     fn assignment(&mut self) -> Result<Expression> {

@@ -85,3 +85,31 @@ fn r#if() {
     let mut engine = Engine::new();
     assert_eq!(engine.evaluate(source).unwrap(), Value::Null);
 }
+
+#[test]
+fn if_else() {
+    let source = "
+        if 39 > 15 {
+            21 + 1
+        } else {
+            10 * 2
+        }
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate(source).unwrap(), 22.into());
+}
+
+#[test]
+fn if_else_if_else() {
+    let source = "
+        if 39 > 15 {
+            21 + 1
+        } else if 34 > 22 {
+            10 * 2
+        } else {
+            29 * 3
+        }
+    ";
+    let mut engine = Engine::new();
+    assert_eq!(engine.evaluate(source).unwrap(), 22.into());
+}
