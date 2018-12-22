@@ -164,73 +164,56 @@ impl<'a> Generator<'a> {
 
     fn expression(&mut self, chunk: &mut Chunk, expression: Expression) -> Result<()> {
         match expression {
-            Expression::Integer(integer) => {
-                let constant = self.state.constants.insert(Constant::Integer(integer));
-                chunk.instructions.push(Instruction::PushConstant(constant));
-            }
-            Expression::Float(float) => {
-                let constant = self.state.constants.insert(Constant::Float(float));
-                chunk.instructions.push(Instruction::PushConstant(constant));
-            }
-            Expression::Boolean(boolean) => {
-                chunk.instructions.push(Instruction::PushBoolean(boolean));
-            }
-            Expression::Assignment(left, right) => {
-                let identifier = match *left {
-                    Expression::Identifier(identifier) => identifier,
-                    _ => bail!("invalid left expression in var declaration"),
-                };
-                self.expression(chunk, *right)?;
-
-                if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
-                    chunk.instructions.push(Instruction::PopLocal(local));
-                    chunk.instructions.push(Instruction::PushLocal(local));
-                    return Ok(());
-                }
-                let closed = self.search_closed(chunk, identifier)?;
-                chunk.instructions.push(Instruction::PopClosed(closed));
-                chunk.instructions.push(Instruction::PushClosed(closed));
-            }
-            Expression::Binary(binary, left, right) => {
-                self.expression(chunk, *left)?;
-                self.expression(chunk, *right)?;
-                chunk.instructions.push(binary.into());
-            }
-            Expression::Unary(unary, expression) => {
-                self.expression(chunk, *expression)?;
-                chunk.instructions.push(unary.into());
-            }
-            Expression::Identifier(identifier) => {
-                if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
-                    chunk.instructions.push(Instruction::PushLocal(local));
-                    return Ok(());
-                }
-                let closed = self.search_closed(chunk, identifier)?;
-                chunk.instructions.push(Instruction::PushClosed(closed));
-            }
-            Expression::VarDeclaration(expression) => {
-                self.var_declaration(chunk, *expression)?;
-            }
+            Expression::Integer(integer) => self.constant(chunk, Constant::Integer(integer))?,
+            Expression::Float(integer) => self.constant(chunk, Constant::Float(integer))?,
+            Expression::Boolean(boolean) => self.boolean(chunk, boolean),
+            Expression::Identifier(identifier) => self.identifier(chunk, identifier)?,
+            Expression::Assignment(left, right) => self.assignment(chunk, *left, *right)?,
+            Expression::VarDeclaration(expression) => self.var_declaration(chunk, *expression)?,
+            Expression::Binary(binary, left, right) => self.binary(chunk, binary, *left, *right)?,
+            Expression::Unary(unary, expression) => self.unary(chunk, unary, *expression)?,
             Expression::If(condition, success, failure) => {
-                self.expression(chunk, *condition)?;
-                let failure_jump = chunk.instructions.len();
-                self.block(chunk, success)?;
-                let success_jump = chunk.instructions.len() + 1;
-                chunk.instructions.insert(
-                    failure_jump,
-                    Instruction::JumpFalsey(chunk.instructions.len() + 2),
-                );
-                if let Some(failure) = failure {
-                    self.block(chunk, failure)?;
-                } else {
-                    chunk.instructions.push(Instruction::PushNull);
-                }
-                chunk.instructions.insert(
-                    success_jump,
-                    Instruction::Jump(chunk.instructions.len() + 1),
-                );
+                self.r#if(chunk, *condition, success, failure)?
             }
         }
+        Ok(())
+    }
+
+    fn constant(&mut self, chunk: &mut Chunk, constant: Constant) -> Result<()> {
+        let constant = self.state.constants.insert(constant);
+        chunk.instructions.push(Instruction::PushConstant(constant));
+        Ok(())
+    }
+
+    fn boolean(&mut self, chunk: &mut Chunk, boolean: bool) {
+        chunk.instructions.push(Instruction::PushBoolean(boolean));
+    }
+
+    fn identifier(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<()> {
+        if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+            chunk.instructions.push(Instruction::PushLocal(local));
+            return Ok(());
+        }
+        let closed = self.search_closed(chunk, identifier)?;
+        chunk.instructions.push(Instruction::PushClosed(closed));
+        Ok(())
+    }
+
+    fn assignment(&mut self, chunk: &mut Chunk, left: Expression, right: Expression) -> Result<()> {
+        let identifier = match left {
+            Expression::Identifier(identifier) => identifier,
+            _ => bail!("invalid left expression in var declaration"),
+        };
+        self.expression(chunk, right)?;
+
+        if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+            chunk.instructions.push(Instruction::PopLocal(local));
+            chunk.instructions.push(Instruction::PushLocal(local));
+            return Ok(());
+        }
+        let closed = self.search_closed(chunk, identifier)?;
+        chunk.instructions.push(Instruction::PopClosed(closed));
+        chunk.instructions.push(Instruction::PushClosed(closed));
         Ok(())
     }
 
@@ -254,6 +237,52 @@ impl<'a> Generator<'a> {
             }
             _ => bail!("invalid expression in var declaration"),
         }
+        Ok(())
+    }
+
+    fn binary(
+        &mut self,
+        chunk: &mut Chunk,
+        binary: Binary,
+        left: Expression,
+        right: Expression,
+    ) -> Result<()> {
+        self.expression(chunk, left)?;
+        self.expression(chunk, right)?;
+        chunk.instructions.push(binary.into());
+        Ok(())
+    }
+
+    fn unary(&mut self, chunk: &mut Chunk, unary: Unary, expression: Expression) -> Result<()> {
+        self.expression(chunk, expression)?;
+        chunk.instructions.push(unary.into());
+        Ok(())
+    }
+
+    fn r#if(
+        &mut self,
+        chunk: &mut Chunk,
+        condition: Expression,
+        success: Block,
+        failure: Option<Block>,
+    ) -> Result<()> {
+        self.expression(chunk, condition)?;
+        let failure_jump = chunk.instructions.len();
+        self.block(chunk, success)?;
+        let success_jump = chunk.instructions.len() + 1;
+        chunk.instructions.insert(
+            failure_jump,
+            Instruction::JumpFalsey(chunk.instructions.len() + 2),
+        );
+        if let Some(failure) = failure {
+            self.block(chunk, failure)?;
+        } else {
+            chunk.instructions.push(Instruction::PushNull);
+        }
+        chunk.instructions.insert(
+            success_jump,
+            Instruction::Jump(chunk.instructions.len() + 1),
+        );
         Ok(())
     }
 
