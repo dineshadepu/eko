@@ -8,11 +8,15 @@ pub enum Value {
 
 impl Value {
     pub fn is_truthy(&self) -> bool {
+        !self.is_falsey()
+    }
+
+    pub fn is_falsey(&self) -> bool {
         use self::Value::*;
 
         match self {
-            Null | Boolean(false) => false,
-            Integer(_) | Float(_) | Boolean(true) => true,
+            Null | Boolean(false) => true,
+            _ => false,
         }
     }
 }

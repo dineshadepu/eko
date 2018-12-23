@@ -187,7 +187,7 @@ impl Fiber {
             (Negate, Integer(integer)) => Integer(-integer),
             (Negate, Float(float)) => Float(-float),
 
-            (Not, value) => Boolean(!value.is_truthy()),
+            (Not, value) => Boolean(value.is_falsey()),
 
             _ => unimplemented!("unary not yet implemented"),
         };
@@ -198,7 +198,7 @@ impl Fiber {
 
     fn jump_falsey(&mut self, instruction: usize) -> Result<()> {
         let value = self.operands_pop()?;
-        if !value.is_truthy() {
+        if value.is_falsey() {
             self.cur_frame_mut().cur_instruction = instruction;
         }
         Ok(())
