@@ -57,7 +57,7 @@ impl<'a> Generator<'a> {
     }
 
     fn constant(&mut self, chunk: &mut Chunk, constant: Constant) -> Result<()> {
-        let constant = self.state.constants.insert(constant);
+        let constant = self.state.constants.insert_or_push(constant);
         chunk.instructions.push(Instruction::PushConstant(constant));
         Ok(())
     }
@@ -67,7 +67,7 @@ impl<'a> Generator<'a> {
     }
 
     fn identifier(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<()> {
-        if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+        if let Some(local) = chunk.identifiers.get_index(&identifier) {
             chunk.instructions.push(Instruction::PushLocal(local));
             return Ok(());
         }
@@ -88,7 +88,7 @@ impl<'a> Generator<'a> {
 
         self.expression(chunk, right)?;
 
-        if let Some(local) = chunk.identifiers.get_by_value(&identifier) {
+        if let Some(local) = chunk.identifiers.get_index(&identifier) {
             chunk.instructions.push(Instruction::PopLocal(local));
             chunk.instructions.push(Instruction::PushLocal(local));
             return Ok(());
@@ -195,11 +195,11 @@ impl<'a> Generator<'a> {
     /// Fails if the local is already defined, be it under the same identifier
     /// or a different one.
     fn chunk_define_local(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<usize> {
-        if chunk.identifiers.get_by_value(&identifier).is_some() {
+        if chunk.identifiers.get_index(&identifier).is_some() {
             let symbol = self.state_symbol(identifier)?;
             bail!("identifier already declared: '{}'", symbol);
         }
-        Ok(chunk.identifiers.insert(identifier))
+        Ok(chunk.identifiers.insert_or_push(identifier))
     }
 
     /// Gets the closed of the given identifier from the given chunk.
@@ -218,7 +218,7 @@ impl<'a> Generator<'a> {
                 .get_mut(parent)
                 .ok_or_else(|| format_err!("failed to find chunk: {}", parent))?;
 
-            if let Some(closed) = chunk.identifiers.get_by_value(&identifier) {
+            if let Some(closed) = chunk.identifiers.get_index(&identifier) {
                 return Ok((parents, closed));
             }
 

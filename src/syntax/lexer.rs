@@ -107,7 +107,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "var" => Token::Var,
             "if" => Token::If,
             "else" => Token::Else,
-            _ => Token::Identifier(self.state.symbols.insert(buf)),
+            _ => Token::Identifier(self.state.symbols.insert_or_push(buf)),
         };
         Ok(token)
     }
