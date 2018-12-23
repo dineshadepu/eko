@@ -196,8 +196,8 @@ impl<'a> Generator<'a> {
     /// or a different one.
     fn chunk_define_local(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<usize> {
         if chunk.identifiers.get_index(&identifier).is_some() {
-            let symbol = self.state_symbol(identifier)?;
-            bail!("identifier already declared: '{}'", symbol);
+            let identifier = self.state_identifier(identifier)?;
+            bail!("identifier already declared: '{}'", identifier);
         }
         Ok(chunk.identifiers.insert_or_push(identifier))
     }
@@ -226,18 +226,18 @@ impl<'a> Generator<'a> {
             cur_parent = chunk.parent;
         }
 
-        let symbol = self.state_symbol(identifier)?;
-        bail!("identifier not declared: {}", symbol)
+        let identifier = self.state_identifier(identifier)?;
+        bail!("identifier not declared: {}", identifier)
     }
 
-    /// Gets the symbol of the given identifier from the current state.
-    fn state_symbol(&self, identifier: usize) -> Result<&str> {
-        let symbol = self
+    /// Gets the identifier of the given identifier from the current state.
+    fn state_identifier(&self, identifier: usize) -> Result<&str> {
+        let identifier = self
             .state
-            .symbols
+            .identifiers
             .get(identifier)
-            .ok_or_else(|| format_err!("failed to find symbol: {}", identifier))?
+            .ok_or_else(|| format_err!("failed to find identifier: {}", identifier))?
             .as_str();
-        Ok(symbol)
+        Ok(identifier)
     }
 }

@@ -3,14 +3,14 @@ use std::io::{Cursor, Read};
 use failure::{format_err, Error};
 
 use crate::generate::Generator;
-use crate::util::Pool;
 use crate::runtime::{Chunk, Constant, Fiber, Instruction, Value};
 use crate::syntax::{Lexer, Parser, Token};
+use crate::util::Pool;
 
 pub mod generate;
-pub mod util;
 pub mod runtime;
 pub mod syntax;
+pub mod util;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -59,7 +59,7 @@ impl<'a> Compiler<'a> {
 }
 
 pub struct State {
-    symbols: Pool<String>,
+    identifiers: Pool<String>,
     constants: Pool<Constant>,
     chunks: Pool<Chunk>,
 }
@@ -67,7 +67,7 @@ pub struct State {
 impl State {
     pub fn new() -> State {
         State {
-            symbols: Pool::new(),
+            identifiers: Pool::new(),
             constants: Pool::new(),
             chunks: Pool::new(),
         }
