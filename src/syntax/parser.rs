@@ -2,20 +2,20 @@ use std::io::Read;
 
 use failure::{bail, format_err};
 
-use crate::ast::*;
+use crate::syntax::ast::*;
 use crate::{Lexer, Result, Token};
 
-pub(crate) struct Parser<'a, R: Read> {
+pub struct Parser<'a, R: Read> {
     lexer: &'a mut Lexer<'a, R>,
     peek: Option<Token>,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
-    pub(crate) fn new(lexer: &'a mut Lexer<'a, R>) -> Parser<'a, R> {
+    pub fn new(lexer: &'a mut Lexer<'a, R>) -> Parser<'a, R> {
         Parser { lexer, peek: None }
     }
 
-    pub(crate) fn parse(&mut self) -> Result<Block> {
+    pub fn parse(&mut self) -> Result<Block> {
         self.block_with_terminal(None)
     }
 

@@ -1,32 +1,34 @@
 use crate::Token;
 
 #[derive(Debug)]
-pub(crate) struct Block {
-    pub(crate) expressions: Vec<Expression>,
+pub struct Block {
+    pub expressions: Vec<Expression>,
 }
 
 impl Block {
-    pub(crate) fn new(expressions: Vec<Expression>) -> Block {
+    pub fn new(expressions: Vec<Expression>) -> Block {
         Block { expressions }
     }
 }
 
 #[derive(Debug)]
-pub(crate) enum Expression {
-    Null,
+pub enum Expression {
     Integer(i64),
     Float(f64),
     Boolean(bool),
+    Null,
     Identifier(usize),
+
     VarDeclaration(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
     Binary(Binary, Box<Expression>, Box<Expression>),
     Unary(Unary, Box<Expression>),
+
     If(Box<Expression>, Block, Option<Block>),
 }
 
 #[derive(Debug)]
-pub(crate) enum Binary {
+pub enum Binary {
     Add,
     Subtract,
     Multiply,
@@ -66,7 +68,7 @@ impl Binary {
 }
 
 #[derive(Debug)]
-pub(crate) enum Unary {
+pub enum Unary {
     Negate,
     Not,
 }

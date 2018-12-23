@@ -1,40 +1,40 @@
 #[derive(Debug)]
-pub(crate) struct Pool<T>(Vec<T>);
+pub struct Pool<T>(Vec<T>);
 
 impl<T> Pool<T> {
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub(crate) fn new() -> Pool<T> {
+    pub fn new() -> Pool<T> {
         Pool(Vec::new())
     }
 
-    pub(crate) fn push(&mut self, value: T) -> usize {
+    pub fn push(&mut self, value: T) -> usize {
         let index = self.0.len();
         self.0.push(value);
         index
     }
 
-    pub(crate) fn pop(&mut self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         self.0.pop()
     }
 
-    pub(crate) fn get(&self, index: usize) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         self.0.get(index)
     }
 
-    pub(crate) fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.0.get_mut(index)
     }
 }
 
 impl<T: PartialEq> Pool<T> {
-    pub(crate) fn insert(&mut self, value: T) -> usize {
+    pub fn insert(&mut self, value: T) -> usize {
         self.entry_by_value(&value).or_insert(value)
     }
 
-    pub(crate) fn get_by_value(&self, value: &T) -> Option<usize> {
+    pub fn get_by_value(&self, value: &T) -> Option<usize> {
         for (index, item) in self.0.iter().enumerate() {
             if item == value {
                 return Some(index);
@@ -43,7 +43,7 @@ impl<T: PartialEq> Pool<T> {
         None
     }
 
-    pub(crate) fn entry_by_value(&mut self, value: &T) -> Entry<T> {
+    pub fn entry_by_value(&mut self, value: &T) -> Entry<T> {
         if let Some(index) = self.get_by_value(value) {
             Entry::Occupied(OccupiedEntry {
                 index,
@@ -61,13 +61,13 @@ impl<T: Clone> Clone for Pool<T> {
     }
 }
 
-pub(crate) enum Entry<'a, T> {
+pub enum Entry<'a, T> {
     Vacant(VacantEntry<'a, T>),
     Occupied(OccupiedEntry<'a, T>),
 }
 
 impl<'a, T> Entry<'a, T> {
-    pub(crate) fn or_insert(self, value: T) -> usize {
+    pub fn or_insert(self, value: T) -> usize {
         use self::Entry::*;
 
         match self {
@@ -76,7 +76,7 @@ impl<'a, T> Entry<'a, T> {
         }
     }
 
-    pub(crate) fn or_insert_with<F>(self, value: F) -> usize
+    pub fn or_insert_with<F>(self, value: F) -> usize
     where
         F: FnOnce() -> T,
     {
@@ -89,23 +89,23 @@ impl<'a, T> Entry<'a, T> {
     }
 }
 
-pub(crate) struct VacantEntry<'a, T> {
+pub struct VacantEntry<'a, T> {
     pool: &'a mut Pool<T>,
 }
 
 impl<'a, T> VacantEntry<'a, T> {
-    pub(crate) fn insert(self, value: T) -> usize {
+    pub fn insert(self, value: T) -> usize {
         self.pool.push(value)
     }
 }
 
-pub(crate) struct OccupiedEntry<'a, T> {
+pub struct OccupiedEntry<'a, T> {
     index: usize,
     value: &'a T,
 }
 
 impl<'a, T> OccupiedEntry<'a, T> {
-    pub(crate) fn index(&self) -> usize {
+    pub fn index(&self) -> usize {
         self.index
     }
 }

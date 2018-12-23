@@ -2,52 +2,17 @@ use std::io::{ErrorKind, Read};
 
 use failure::{bail, format_err};
 
+use crate::syntax::Token;
 use crate::{Result, State};
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Token {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-
-    Assign,
-    Equal,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-
-    And,
-    Or,
-    Not,
-
-    Null,
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    Identifier(usize),
-
-    Var,
-    If,
-    Else,
-
-    Newline,
-}
-
-pub(crate) struct Lexer<'a, R: Read> {
+pub struct Lexer<'a, R: Read> {
     state: &'a mut State,
     source: R,
     peek: Option<u8>,
 }
 
 impl<'a, R: Read> Lexer<'a, R> {
-    pub(crate) fn new(state: &'a mut State, source: R) -> Lexer<'a, R> {
+    pub fn new(state: &'a mut State, source: R) -> Lexer<'a, R> {
         Lexer {
             state,
             source,
@@ -55,7 +20,7 @@ impl<'a, R: Read> Lexer<'a, R> {
         }
     }
 
-    pub(crate) fn next(&mut self) -> Result<Option<Token>> {
+    pub fn next(&mut self) -> Result<Option<Token>> {
         self.whitespace()?;
 
         let byte = match self.source_peek()? {

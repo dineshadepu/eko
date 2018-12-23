@@ -1,18 +1,18 @@
 use failure::{bail, format_err};
 
-use crate::ast::*;
+use crate::syntax::ast::*;
 use crate::{Chunk, Closed, Constant, Instruction, Result, State};
 
-pub(crate) struct Generator<'a> {
+pub struct Generator<'a> {
     state: &'a mut State,
 }
 
 impl<'a> Generator<'a> {
-    pub(crate) fn new(state: &'a mut State) -> Generator<'a> {
+    pub fn new(state: &'a mut State) -> Generator<'a> {
         Generator { state }
     }
 
-    pub(crate) fn generate(&mut self, block: Block) -> Result<usize> {
+    pub fn generate(&mut self, block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
         self.block(&mut chunk, block)?;
         Ok(self.state.chunks.push(chunk))

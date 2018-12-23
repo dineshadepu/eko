@@ -1,4 +1,5 @@
-use eko::{Engine, Value};
+use eko::runtime::Value;
+use eko::Engine;
 
 #[test]
 fn add() {

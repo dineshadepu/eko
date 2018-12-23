@@ -2,13 +2,13 @@ use failure::format_err;
 
 use crate::{Instruction, Result, State, Value};
 
-pub(crate) struct Fiber {
+pub struct Fiber {
     operands: Vec<Value>,
     frames: Vec<Frame>,
 }
 
 impl Fiber {
-    pub(crate) fn new(state: &State, entry: usize) -> Result<Fiber> {
+    pub fn new(state: &State, entry: usize) -> Result<Fiber> {
         let locals = state
             .chunks
             .get(entry)
@@ -22,7 +22,7 @@ impl Fiber {
         Ok(fiber)
     }
 
-    pub(crate) fn return_value(&self) -> Option<&Value> {
+    pub fn return_value(&self) -> Option<&Value> {
         if self.is_finished() {
             self.operands.last()
         } else {
@@ -30,16 +30,16 @@ impl Fiber {
         }
     }
 
-    pub(crate) fn is_finished(&self) -> bool {
+    pub fn is_finished(&self) -> bool {
         self.frames.is_empty()
     }
 
-    pub(crate) fn finish(&mut self, state: &State) -> Result<()> {
+    pub fn finish(&mut self, state: &State) -> Result<()> {
         while self.step(state)?.is_some() {}
         Ok(())
     }
 
-    pub(crate) fn step(&mut self, state: &State) -> Result<Option<()>> {
+    pub fn step(&mut self, state: &State) -> Result<Option<()>> {
         use self::Instruction::*;
 
         if self.frames.is_empty() {

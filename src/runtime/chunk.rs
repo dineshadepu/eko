@@ -1,15 +1,16 @@
-use crate::ast::*;
+use crate::runtime::Value;
+use crate::syntax::ast::*;
 use crate::Pool;
 
 #[derive(Debug)]
-pub(crate) struct Chunk {
-    pub(crate) parent: Option<usize>,
-    pub(crate) identifiers: Pool<usize>,
-    pub(crate) instructions: Vec<Instruction>,
+pub struct Chunk {
+    pub parent: Option<usize>,
+    pub identifiers: Pool<usize>,
+    pub instructions: Vec<Instruction>,
 }
 
 impl Chunk {
-    pub(crate) fn new() -> Chunk {
+    pub fn new() -> Chunk {
         Chunk {
             parent: None,
             identifiers: Pool::new(),
@@ -27,13 +28,22 @@ impl Chunk {
 }
 
 #[derive(PartialEq)]
-pub(crate) enum Constant {
+pub enum Constant {
     Integer(i64),
     Float(f64),
 }
 
+impl Into<Value> for &Constant {
+    fn into(self) -> Value {
+        match self {
+            Constant::Integer(integer) => Value::Integer(*integer),
+            Constant::Float(float) => Value::Float(*float),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Instruction {
+pub enum Instruction {
     PushConstant(usize),
     PushBoolean(bool),
     PushNull,
@@ -65,7 +75,7 @@ pub(crate) enum Instruction {
 }
 
 impl Instruction {
-    pub(crate) fn is_binary(&self) -> bool {
+    pub fn is_binary(&self) -> bool {
         use self::Instruction::*;
 
         match self {
@@ -75,7 +85,7 @@ impl Instruction {
         }
     }
 
-    pub(crate) fn is_unary(&self) -> bool {
+    pub fn is_unary(&self) -> bool {
         use self::Instruction::*;
 
         match self {
@@ -115,18 +125,18 @@ impl From<Unary> for Instruction {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Closed(usize, usize);
+pub struct Closed(usize, usize);
 
 impl Closed {
-    pub(crate) fn new(parents: usize, closed: usize) -> Closed {
+    pub fn new(parents: usize, closed: usize) -> Closed {
         Closed(parents, closed)
     }
 
-    pub(crate) fn parents(&self) -> usize {
+    pub fn parents(&self) -> usize {
         self.0
     }
 
-    pub(crate) fn closed(&self) -> usize {
+    pub fn closed(&self) -> usize {
         self.1
     }
 }
