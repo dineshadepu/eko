@@ -3,14 +3,14 @@ use std::io::{Cursor, Read};
 use failure::{format_err, Error};
 
 use crate::generate::Generator;
+use crate::pool::Pool;
 use crate::runtime::{Chunk, Constant, Fiber, Instruction, Value};
 use crate::syntax::{Lexer, Parser, Token};
-use crate::util::Pool;
 
 pub mod generate;
+pub mod pool;
 pub mod runtime;
 pub mod syntax;
-pub mod util;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
