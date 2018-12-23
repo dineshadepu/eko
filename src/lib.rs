@@ -4,11 +4,11 @@ use failure::{format_err, Error};
 
 use crate::generate::Generator;
 use crate::pool::Pool;
-use crate::runtime::{Chunk, Closed, Constant, Fiber, Instruction, Value};
+use crate::runtime::{Chunk, Constant, Fiber, Instruction, Value};
 use crate::syntax::{Lexer, Parser, Token};
 
-mod pool;
 pub mod generate;
+mod pool;
 pub mod runtime;
 pub mod syntax;
 

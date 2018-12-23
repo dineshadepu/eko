@@ -17,14 +17,6 @@ impl Chunk {
             instructions: Vec::new(),
         }
     }
-
-    pub(crate) fn with_parent(parent: usize) -> Chunk {
-        Chunk {
-            parent: Some(parent),
-            identifiers: Pool::new(),
-            instructions: Vec::new(),
-        }
-    }
 }
 
 #[derive(PartialEq)]
@@ -50,9 +42,9 @@ pub enum Instruction {
     Pop,
 
     PushLocal(usize),
-    PushClosed(Closed),
+    PushClosed(u8, usize),
     PopLocal(usize),
-    PopClosed(Closed),
+    PopClosed(u8, usize),
 
     Add,
     Subtract,
@@ -121,22 +113,5 @@ impl From<Unary> for Instruction {
             Unary::Negate => Instruction::Negate,
             Unary::Not => Instruction::Not,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Closed(usize, usize);
-
-impl Closed {
-    pub fn new(parents: usize, closed: usize) -> Closed {
-        Closed(parents, closed)
-    }
-
-    pub fn parents(&self) -> usize {
-        self.0
-    }
-
-    pub fn closed(&self) -> usize {
-        self.1
     }
 }

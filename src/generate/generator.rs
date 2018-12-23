@@ -1,7 +1,7 @@
 use failure::{bail, format_err};
 
 use crate::syntax::ast::*;
-use crate::{Chunk, Closed, Constant, Instruction, Result, State};
+use crate::{Chunk, Constant, Instruction, Result, State};
 
 pub struct Generator<'a> {
     state: &'a mut State,
@@ -73,7 +73,9 @@ impl<'a> Generator<'a> {
         }
 
         let closed = self.chunk_closed(chunk, identifier)?;
-        chunk.instructions.push(Instruction::PushClosed(closed));
+        chunk
+            .instructions
+            .push(Instruction::PushClosed(closed.0, closed.1));
         Ok(())
     }
 
@@ -93,8 +95,12 @@ impl<'a> Generator<'a> {
         }
 
         let closed = self.chunk_closed(chunk, identifier)?;
-        chunk.instructions.push(Instruction::PopClosed(closed));
-        chunk.instructions.push(Instruction::PushClosed(closed));
+        chunk
+            .instructions
+            .push(Instruction::PopClosed(closed.0, closed.1));
+        chunk
+            .instructions
+            .push(Instruction::PushClosed(closed.0, closed.1));
         Ok(())
     }
 
@@ -201,7 +207,7 @@ impl<'a> Generator<'a> {
     /// Starts the search from the given chunk's parent. Fails if the given
     /// identifier cannot be found in the given chunk or any of its parent
     /// chunks.
-    fn chunk_closed(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<Closed> {
+    fn chunk_closed(&mut self, chunk: &mut Chunk, identifier: usize) -> Result<(u8, usize)> {
         let mut parents = 0;
         let mut cur_parent = chunk.parent;
 
@@ -213,7 +219,7 @@ impl<'a> Generator<'a> {
                 .ok_or_else(|| format_err!("failed to find chunk: {}", parent))?;
 
             if let Some(closed) = chunk.identifiers.get_by_value(&identifier) {
-                return Ok(Closed::new(parents, closed));
+                return Ok((parents, closed));
             }
 
             parents += 1;
