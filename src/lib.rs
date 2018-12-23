@@ -2,13 +2,15 @@ use std::io::{Cursor, Read};
 
 use failure::{format_err, Error};
 
+pub(crate) use crate::chunk::{Chunk, Closed, Constant, Instruction};
 pub(crate) use crate::fiber::Fiber;
-pub(crate) use crate::generator::{Chunk, Constant, Generator, Instruction};
+pub(crate) use crate::generator::Generator;
 pub(crate) use crate::lexer::{Lexer, Token};
 pub(crate) use crate::parser::Parser;
 pub(crate) use crate::pool::Pool;
 
 pub mod ast;
+mod chunk;
 mod fiber;
 mod generator;
 mod lexer;
