@@ -1,7 +1,8 @@
 use failure::{bail, format_err};
 
+use crate::code::{Chunk, Constant, Instruction};
 use crate::syntax::ast::*;
-use crate::{Chunk, Constant, Instruction, Result, State};
+use crate::{Result, State};
 
 pub struct Generator<'a> {
     state: &'a mut State,

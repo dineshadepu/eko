@@ -1,5 +1,6 @@
-use crate::runtime::{Instruction, Value};
-use crate::Pool;
+use crate::code::Instruction;
+use crate::pool::Pool;
+use crate::runtime::Value;
 
 #[derive(Debug)]
 pub struct Chunk {

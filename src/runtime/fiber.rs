@@ -1,6 +1,8 @@
 use failure::format_err;
 
-use crate::{Instruction, Result, State, Value};
+use crate::code::Instruction;
+use crate::runtime::Value;
+use crate::{Result, State};
 
 pub struct Fiber {
     operands: Vec<Value>,

@@ -2,12 +2,12 @@ use std::io::{Cursor, Read};
 
 use failure::{format_err, Error};
 
-use crate::generate::Generator;
+use crate::code::{Chunk, Constant, Generator};
 use crate::pool::Pool;
-use crate::runtime::{Chunk, Constant, Fiber, Instruction, Value};
-use crate::syntax::{Lexer, Parser, Token};
+use crate::runtime::{Fiber, Value};
+use crate::syntax::{Lexer, Parser};
 
-pub mod generate;
+pub mod code;
 pub mod pool;
 pub mod runtime;
 pub mod syntax;

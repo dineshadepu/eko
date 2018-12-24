@@ -3,7 +3,8 @@ use std::io::Read;
 use failure::{bail, format_err};
 
 use crate::syntax::ast::*;
-use crate::{Lexer, Result, Token};
+use crate::syntax::{Lexer, Token};
+use crate::Result;
 
 pub struct Parser<'a, R: Read> {
     lexer: &'a mut Lexer<'a, R>,

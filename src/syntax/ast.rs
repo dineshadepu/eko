@@ -1,4 +1,4 @@
-use crate::Token;
+use crate::syntax::Token;
 
 #[derive(Debug)]
 pub struct Block {
