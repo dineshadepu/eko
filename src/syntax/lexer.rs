@@ -29,10 +29,7 @@ impl<'a, R: Read> Lexer<'a, R> {
         };
 
         let token = match byte {
-            b'\n' => {
-                self.source_advance()?;
-                Token::Newline
-            }
+            b'\n' => self.newline()?,
             byte if is_digit(byte) => self.number()?,
             byte if is_operator(byte) => self.operator()?,
             byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
@@ -40,6 +37,11 @@ impl<'a, R: Read> Lexer<'a, R> {
         };
 
         Ok(Some(token))
+    }
+
+    fn newline(&mut self) -> Result<Token> {
+        assert_eq!(self.source_advance()?, b'\n');
+        Ok(Token::Newline)
     }
 
     fn number(&mut self) -> Result<Token> {
