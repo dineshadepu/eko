@@ -27,18 +27,33 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn block_with_terminal(&mut self, terminal: Option<Token>) -> Result<Block> {
+        // Get rid of any preceding newlines first.
+        self.newlines()?;
+
         let mut expressions = Vec::new();
+        let mut newline = true;
+
         while let Some(token) = self.lexer_peek()? {
+            // Stop if `terminal` has been reached.
             if let Some(terminal) = &terminal {
                 if token == terminal {
-                    return Ok(Block::new(expressions));
+                    break;
                 }
             }
-            self.newlines()?;
+
+            // If the previous line did not end with a newline, there cannot
+            // be a new expression. Therefore, this should fail.
+            if !newline {
+                // This will fail with the correct error message.
+                self.lexer_advance_expect(Token::Newline)?;
+            }
+
+            // Parse the expression and the newlines after it.
             expressions.push(self.expression()?);
-            self.newline()?;
+            newline = self.newline()?;
             self.newlines()?;
         }
+
         Ok(Block::new(expressions))
     }
 
@@ -197,11 +212,12 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expression)
     }
 
-    fn newline(&mut self) -> Result<()> {
-        if self.lexer_peek()?.is_some() {
-            self.lexer_advance_expect(Token::Newline)?;
+    fn newline(&mut self) -> Result<bool> {
+        if let Some(Token::Newline) = self.lexer_peek()? {
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
     fn newlines(&mut self) -> Result<()> {

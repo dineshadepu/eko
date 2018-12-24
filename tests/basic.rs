@@ -168,12 +168,12 @@ mod r#if {
         assert_eq!(engine.evaluate(source).unwrap(), 44.into());
     }
 
-    // #[test]
-    // fn single_line() {
-    //     let source = "if true { 10 } else { 5 }";
-    //     let mut engine = Engine::new();
-    //     assert_eq!(engine.evaluate(source).unwrap(), 10.into());
-    // }
+    #[test]
+    fn single_line() {
+        let source = "if true { 10 } else { 5 }";
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate(source).unwrap(), 10.into());
+    }
 }
 
 mod newline {

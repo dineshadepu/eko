@@ -18,8 +18,12 @@ impl<'a> Generator<'a> {
         Ok(self.state.chunks.push(chunk))
     }
 
-    fn block(&mut self, chunk: &mut Chunk, block: Block) -> Result<()> {
-        let is_empty = block.expressions.is_empty();
+    fn block(&mut self, chunk: &mut Chunk, mut block: Block) -> Result<()> {
+        // A block cannot be empty. Even if within the code it is empty, the
+        // block should return `null`.
+        if block.expressions.is_empty() {
+            block.expressions.push(Expression::Null);
+        }
 
         for expression in block.expressions {
             self.expression(chunk, expression)?;
@@ -29,11 +33,9 @@ impl<'a> Generator<'a> {
             chunk.instructions.push(Instruction::Pop);
         }
 
-        // Result of the last expression (if there is one) should not be popped,
-        // as it is the return value of the block.
-        if !is_empty {
-            chunk.instructions.pop();
-        }
+        // Result of the last expression should not be popped, as it is the
+        // return value of the block.
+        chunk.instructions.pop();
 
         Ok(())
     }
