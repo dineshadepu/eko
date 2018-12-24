@@ -77,8 +77,7 @@ mod unary {
 }
 
 mod var {
-    use eko::runtime::Value;
-    use eko::Engine;
+    use eko::{Engine, Value};
 
     #[test]
     fn declaration() {
@@ -112,8 +111,7 @@ mod var {
 }
 
 mod r#if {
-    use eko::runtime::Value;
-    use eko::Engine;
+    use eko::{Engine, Value};
 
     #[test]
     fn basic() {

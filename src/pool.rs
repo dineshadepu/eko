@@ -24,10 +24,6 @@ impl<T> Pool<T> {
         index
     }
 
-    pub fn pop(&mut self) -> Option<T> {
-        self.0.pop()
-    }
-
     pub fn get(&self, index: usize) -> Option<&T> {
         self.0.get(index)
     }

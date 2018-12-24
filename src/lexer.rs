@@ -2,8 +2,43 @@ use std::io::{ErrorKind, Read};
 
 use failure::{bail, format_err};
 
-use crate::syntax::Token;
-use crate::{Result, State};
+use crate::engine::{Result, State};
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Token {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+
+    Assign,
+    Equal,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+
+    And,
+    Or,
+    Not,
+
+    Null,
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+    Identifier(usize),
+
+    Var,
+    If,
+    Else,
+
+    Newline,
+}
 
 pub struct Lexer<'a, R: Read> {
     state: &'a mut State,
