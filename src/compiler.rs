@@ -119,16 +119,16 @@ impl From<Unary> for Instruction {
     }
 }
 
-pub struct Generator<'a> {
+pub struct Compiler<'a> {
     state: &'a mut State,
 }
 
-impl<'a> Generator<'a> {
-    pub fn new(state: &'a mut State) -> Generator<'a> {
-        Generator { state }
+impl<'a> Compiler<'a> {
+    pub fn new(state: &'a mut State) -> Compiler<'a> {
+        Compiler { state }
     }
 
-    pub fn generate(&mut self, block: Block) -> Result<usize> {
+    pub fn compile(&mut self, block: Block) -> Result<usize> {
         let mut chunk = Chunk::new();
         self.block(&mut chunk, block)?;
         Ok(self.state.chunks.push(chunk))

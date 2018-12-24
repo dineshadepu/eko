@@ -2,8 +2,8 @@ use std::io::{Cursor, Read};
 
 use failure::{format_err, Error};
 
+use crate::compiler::{Chunk, Compiler, Constant};
 use crate::fiber::Fiber;
-use crate::generator::{Chunk, Constant, Generator};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::pool::Pool;
@@ -22,11 +22,18 @@ impl Engine {
         }
     }
 
-    pub fn evaluate(&mut self, source: &str) -> Result<Value> {
-        let mut compiler = Compiler::new(&mut self.state);
-        let entry = compiler.compile_str(source)?;
+    pub fn evaluate_str(&mut self, source: &str) -> Result<Value> {
+        self.evaluate(Cursor::new(source))
+    }
+
+    pub fn evaluate<R: Read>(&mut self, source: R) -> Result<Value> {
+        let mut lexer = Lexer::new(&mut self.state, source);
+        let block = Parser::new(&mut lexer).parse()?;
+        let entry = Compiler::new(&mut self.state).compile(block)?;
+
         let mut fiber = Fiber::new(&self.state, entry)?;
         fiber.finish(&self.state)?;
+
         fiber
             .return_value()
             .cloned()
@@ -34,31 +41,10 @@ impl Engine {
     }
 }
 
-struct Compiler<'a> {
-    state: &'a mut State,
-}
-
-impl<'a> Compiler<'a> {
-    fn new(state: &'a mut State) -> Compiler<'a> {
-        Compiler { state }
-    }
-
-    fn compile_str(&mut self, source: &str) -> Result<usize> {
-        self.compile(Cursor::new(source))
-    }
-
-    fn compile<R: Read>(&mut self, source: R) -> Result<usize> {
-        let mut lexer = Lexer::new(&mut self.state, source);
-        let mut parser = Parser::new(&mut lexer);
-        let expression = parser.parse()?;
-        Generator::new(&mut self.state).generate(expression)
-    }
-}
-
 pub struct State {
-    pub(crate) identifiers: Pool<String>,
-    pub(crate) constants: Pool<Constant>,
-    pub(crate) chunks: Pool<Chunk>,
+    pub identifiers: Pool<String>,
+    pub constants: Pool<Constant>,
+    pub chunks: Pool<Chunk>,
 }
 
 impl State {

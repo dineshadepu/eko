@@ -3,7 +3,7 @@ pub use crate::value::Value;
 
 mod engine;
 mod fiber;
-mod generator;
+mod compiler;
 mod lexer;
 mod parser;
 mod pool;

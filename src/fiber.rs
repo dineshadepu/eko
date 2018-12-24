@@ -1,7 +1,7 @@
 use failure::format_err;
 
+use crate::compiler::Instruction;
 use crate::engine::{Result, State};
-use crate::generator::Instruction;
 use crate::value::Value;
 
 pub struct Fiber {
