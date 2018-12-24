@@ -26,14 +26,14 @@ pub enum Expression {
 
     VarDeclaration(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
-    Binary(Binary, Box<Expression>, Box<Expression>),
-    Unary(Unary, Box<Expression>),
+    Binary(BinaryOperator, Box<Expression>, Box<Expression>),
+    Unary(UnaryOperator, Box<Expression>),
 
     If(Box<Expression>, Block, Option<Block>),
 }
 
 #[derive(Debug)]
-pub enum Binary {
+pub enum BinaryOperator {
     Add,
     Subtract,
     Multiply,
@@ -49,43 +49,43 @@ pub enum Binary {
     Or,
 }
 
-impl Binary {
-    pub(crate) fn from_token(token: &Token) -> Option<Binary> {
-        let binary = match token {
-            Token::Add => Binary::Add,
-            Token::Subtract => Binary::Subtract,
-            Token::Multiply => Binary::Multiply,
-            Token::Divide => Binary::Divide,
+impl BinaryOperator {
+    pub(crate) fn from_token(token: &Token) -> Option<BinaryOperator> {
+        let binary_op = match token {
+            Token::Add => BinaryOperator::Add,
+            Token::Subtract => BinaryOperator::Subtract,
+            Token::Multiply => BinaryOperator::Multiply,
+            Token::Divide => BinaryOperator::Divide,
 
-            Token::Equal => Binary::Equal,
-            Token::Less => Binary::Less,
-            Token::LessEqual => Binary::LessEqual,
-            Token::Greater => Binary::Greater,
-            Token::GreaterEqual => Binary::GreaterEqual,
+            Token::Equal => BinaryOperator::Equal,
+            Token::Less => BinaryOperator::Less,
+            Token::LessEqual => BinaryOperator::LessEqual,
+            Token::Greater => BinaryOperator::Greater,
+            Token::GreaterEqual => BinaryOperator::GreaterEqual,
 
-            Token::And => Binary::And,
-            Token::Or => Binary::Or,
+            Token::And => BinaryOperator::And,
+            Token::Or => BinaryOperator::Or,
 
             _ => return None,
         };
-        Some(binary)
+        Some(binary_op)
     }
 }
 
 #[derive(Debug)]
-pub enum Unary {
+pub enum UnaryOperator {
     Negate,
     Not,
 }
 
-impl Unary {
-    pub(crate) fn from_token(token: &Token) -> Option<Unary> {
-        let unary = match token {
-            Token::Subtract => Unary::Negate,
-            Token::Not => Unary::Not,
+impl UnaryOperator {
+    pub(crate) fn from_token(token: &Token) -> Option<UnaryOperator> {
+        let unary_op = match token {
+            Token::Subtract => UnaryOperator::Negate,
+            Token::Not => UnaryOperator::Not,
             _ => return None,
         };
-        Some(unary)
+        Some(unary_op)
     }
 }
 
@@ -209,8 +209,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 Token::And | Token::Or => {}
                 _ => return Ok(left),
             }
-            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary, left.into(), self.compare()?.into());
+            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary_op, left.into(), self.compare()?.into());
         }
     }
 
@@ -229,8 +229,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 | Token::GreaterEqual => {}
                 _ => return Ok(left),
             }
-            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary, left.into(), self.add()?.into());
+            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary_op, left.into(), self.add()?.into());
         }
     }
 
@@ -245,8 +245,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 Token::Add | Token::Subtract => {}
                 _ => return Ok(left),
             }
-            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary, left.into(), self.multiply()?.into());
+            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary_op, left.into(), self.multiply()?.into());
         }
     }
 
@@ -261,8 +261,8 @@ impl<'a, R: Read> Parser<'a, R> {
                 Token::Multiply | Token::Divide => {}
                 _ => return Ok(left),
             }
-            let binary = Binary::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary, left.into(), self.unary()?.into());
+            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
+            left = Expression::Binary(binary_op, left.into(), self.unary()?.into());
         }
     }
 
@@ -275,8 +275,8 @@ impl<'a, R: Read> Parser<'a, R> {
             Token::Subtract | Token::Not => {}
             _ => return self.term(),
         }
-        let unary = Unary::from_token(&self.lexer_advance()?).unwrap();
-        Ok(Expression::Unary(unary, self.unary()?.into()))
+        let unary_op = UnaryOperator::from_token(&self.lexer_advance()?).unwrap();
+        Ok(Expression::Unary(unary_op, self.unary()?.into()))
     }
 
     fn term(&mut self) -> Result<Expression> {

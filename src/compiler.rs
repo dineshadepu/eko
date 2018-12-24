@@ -1,7 +1,7 @@
 use failure::{bail, format_err};
 
 use crate::engine::{Result, State};
-use crate::parser::{Binary, Block, Expression, Unary};
+use crate::parser::{BinaryOperator, Block, Expression, UnaryOperator};
 use crate::pool::Pool;
 use crate::value::Value;
 
@@ -90,31 +90,31 @@ impl Instruction {
     }
 }
 
-impl From<Binary> for Instruction {
-    fn from(binary: Binary) -> Instruction {
+impl From<BinaryOperator> for Instruction {
+    fn from(binary: BinaryOperator) -> Instruction {
         match binary {
-            Binary::Add => Instruction::Add,
-            Binary::Subtract => Instruction::Subtract,
-            Binary::Multiply => Instruction::Multiply,
-            Binary::Divide => Instruction::Divide,
+            BinaryOperator::Add => Instruction::Add,
+            BinaryOperator::Subtract => Instruction::Subtract,
+            BinaryOperator::Multiply => Instruction::Multiply,
+            BinaryOperator::Divide => Instruction::Divide,
 
-            Binary::Equal => Instruction::Equal,
-            Binary::Less => Instruction::Less,
-            Binary::LessEqual => Instruction::LessEqual,
-            Binary::Greater => Instruction::Greater,
-            Binary::GreaterEqual => Instruction::GreaterEqual,
+            BinaryOperator::Equal => Instruction::Equal,
+            BinaryOperator::Less => Instruction::Less,
+            BinaryOperator::LessEqual => Instruction::LessEqual,
+            BinaryOperator::Greater => Instruction::Greater,
+            BinaryOperator::GreaterEqual => Instruction::GreaterEqual,
 
-            Binary::And => Instruction::And,
-            Binary::Or => Instruction::Or,
+            BinaryOperator::And => Instruction::And,
+            BinaryOperator::Or => Instruction::Or,
         }
     }
 }
 
-impl From<Unary> for Instruction {
-    fn from(unary: Unary) -> Instruction {
+impl From<UnaryOperator> for Instruction {
+    fn from(unary: UnaryOperator) -> Instruction {
         match unary {
-            Unary::Negate => Instruction::Negate,
-            Unary::Not => Instruction::Not,
+            UnaryOperator::Negate => Instruction::Negate,
+            UnaryOperator::Not => Instruction::Not,
         }
     }
 }
@@ -252,7 +252,7 @@ impl<'a> Compiler<'a> {
     fn binary(
         &mut self,
         chunk: &mut Chunk,
-        binary: Binary,
+        binary: BinaryOperator,
         left: Expression,
         right: Expression,
     ) -> Result<()> {
@@ -262,7 +262,12 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    fn unary(&mut self, chunk: &mut Chunk, unary: Unary, expression: Expression) -> Result<()> {
+    fn unary(
+        &mut self,
+        chunk: &mut Chunk,
+        unary: UnaryOperator,
+        expression: Expression,
+    ) -> Result<()> {
         self.expression(chunk, expression)?;
         chunk.instructions.push(unary.into());
         Ok(())
