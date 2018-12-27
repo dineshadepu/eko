@@ -118,6 +118,9 @@ impl<'a, R: Read> Lexer<'a, R> {
             (b')', _) => Token::RightParen,
             (b'{', _) => Token::LeftBrace,
             (b'}', _) => Token::RightBrace,
+            (b'&', Some(b'&')) => Token::And,
+            (b'|', Some(b'|')) => Token::Or,
+            (b'!', _) => Token::Not,
             _ => unimplemented!("operator not yet implemented"),
         };
         Ok(token)
@@ -135,12 +138,9 @@ impl<'a, R: Read> Lexer<'a, R> {
         }
         let buf = String::from_utf8(buf)?;
         let token = match buf.as_str() {
-            "not" => Token::Not,
             "null" => Token::Null,
             "true" => Token::Boolean(true),
             "false" => Token::Boolean(false),
-            "and" => Token::And,
-            "or" => Token::Or,
             "var" => Token::Var,
             "if" => Token::If,
             "else" => Token::Else,
@@ -203,7 +203,8 @@ fn is_digit(byte: u8) -> bool {
 
 fn is_operator(byte: u8) -> bool {
     match byte {
-        b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' | b'(' | b')' | b'{' | b'}' => true,
+        b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' | b'(' | b')' | b'{' | b'}' | b'&'
+        | b'|' | b'!' => true,
         _ => false,
     }
 }
