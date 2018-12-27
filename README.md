@@ -2,6 +2,16 @@
 
 [![Build Status](https://travis-ci.org/ravernkoh/eko.svg?branch=master)](https://travis-ci.org/ravernkoh/eko)
 
-_Eko is currently a **work in progress**._
+Fast and simple scripting language for Rust. _Currently a **work in progress**._
 
-Embedded scripting language for Rust.
+## Goals
+
+- Clean and familiar syntax
+- Good performance
+- Easy interoperability with Rust
+
+## Non-goals
+
+- Classes or prototypes
+- Near-native performance
+- Static typing (or anything similar)

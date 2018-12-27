@@ -1,6 +1,6 @@
 [package]
 name = "eko"
-description = "Embedded scripting language for Rust"
+description = "Fast and simple scripting language for Rust"
 version = "0.0.0"
 authors = ["Ravern Koh <ravernkoh@gmail.com>"]
 license = "MIT"
