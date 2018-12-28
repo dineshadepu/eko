@@ -31,7 +31,7 @@ pub enum Token {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Identifier(String),
+    Ident(String),
 
     Var,
     If,
@@ -62,7 +62,7 @@ impl<R: Read> Lexer<R> {
             b'\n' => self.newline()?,
             byte if is_digit(byte) => self.number()?,
             byte if is_op(byte) => self.op()?,
-            byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
+            byte if is_alpha(byte) || byte == b'_' => self.ident()?,
             _ => bail!("unexpected byte: '{}'", byte),
         };
 
@@ -103,25 +103,40 @@ impl<R: Read> Lexer<R> {
             (b'-', _) => Token::Subtract,
             (b'*', _) => Token::Multiply,
             (b'/', _) => Token::Divide,
-            (b'=', Some(b'=')) => Token::Equal,
+            (b'=', Some(b'=')) => {
+                self.source_advance()?;
+                Token::Equal
+            }
             (b'=', _) => Token::Assign,
-            (b'<', Some(b'=')) => Token::LessEqual,
+            (b'<', Some(b'=')) => {
+                self.source_advance()?;
+                Token::LessEqual
+            }
             (b'<', _) => Token::Less,
-            (b'>', Some(b'=')) => Token::GreaterEqual,
+            (b'>', Some(b'=')) => {
+                self.source_advance()?;
+                Token::GreaterEqual
+            }
             (b'>', _) => Token::Greater,
             (b'(', _) => Token::LeftParen,
             (b')', _) => Token::RightParen,
             (b'{', _) => Token::LeftBrace,
             (b'}', _) => Token::RightBrace,
-            (b'&', Some(b'&')) => Token::And,
-            (b'|', Some(b'|')) => Token::Or,
+            (b'&', Some(b'&')) => {
+                self.source_advance()?;
+                Token::And
+            }
+            (b'|', Some(b'|')) => {
+                self.source_advance()?;
+                Token::Or
+            }
             (b'!', _) => Token::Not,
-            _ => unimplemented!("op not yet implemented"),
+            _ => unreachable!("forgot to match op in `is_op`"),
         };
         Ok(token)
     }
 
-    fn identifier(&mut self) -> Result<Token> {
+    fn ident(&mut self) -> Result<Token> {
         let mut buf = Vec::new();
         while let Some(byte) = self.source_peek()? {
             match byte {
@@ -139,7 +154,7 @@ impl<R: Read> Lexer<R> {
             "var" => Token::Var,
             "if" => Token::If,
             "else" => Token::Else,
-            _ => Token::Identifier(buf),
+            _ => Token::Ident(buf),
         };
         Ok(token)
     }

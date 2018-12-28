@@ -7,7 +7,7 @@ use crate::result::Result;
 
 #[derive(Debug)]
 pub struct Block {
-    pub expressions: Vec<Expr>,
+    pub exprs: Vec<Expr>,
 }
 
 #[derive(Debug)]
@@ -16,7 +16,7 @@ pub enum Expr {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Identifier(String),
+    Ident(String),
 
     VarDecl(Box<Expr>),
 
@@ -135,7 +135,7 @@ impl<'a, R: Read> Parser<'a, R> {
         // Get rid of any preceding newlines first.
         self.newlines()?;
 
-        let mut expressions = Vec::new();
+        let mut exprs = Vec::new();
         // Whether a newline was found in the previous iteration.
         let mut newline = true;
 
@@ -155,12 +155,12 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             // Parse the expression and the newlines after it.
-            expressions.push(self.expr()?);
+            exprs.push(self.expr()?);
             newline = self.newline()?;
             self.newlines()?;
         }
 
-        Ok(Block { expressions })
+        Ok(Block { exprs })
     }
 
     fn expr(&mut self) -> Result<Expr> {
@@ -174,7 +174,9 @@ impl<'a, R: Read> Parser<'a, R> {
 
         let expr = match self.lexer_peek()?.unwrap() {
             Token::Var => Expr::VarDecl(self.var_decl_expr()?.into()),
+
             Token::If => Expr::If(self.if_expr()?.into()),
+
             _ => self.expr_assign()?,
         };
 
@@ -195,14 +197,14 @@ impl<'a, R: Read> Parser<'a, R> {
             assert_eq!(self.lexer_advance()?, Token::Else);
             if let Some(Token::If) = self.lexer_peek()? {
                 Block {
-                    expressions: vec![Expr::If(self.if_expr()?.into())],
+                    exprs: vec![Expr::If(self.if_expr()?.into())],
                 }
             } else {
                 self.block_with_braces()?
             }
         } else {
             Block {
-                expressions: vec![Expr::Null],
+                exprs: vec![Expr::Null],
             }
         };
 
@@ -227,7 +229,7 @@ impl<'a, R: Read> Parser<'a, R> {
             _ => return Ok(target),
         }
         match target {
-            Expr::Identifier(_) => {}
+            Expr::Ident(_) => {}
             _ => bail!("invalid left expression in assignment"),
         };
         self.lexer_advance()?;
@@ -254,7 +256,7 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             let op = BinaryOp::from_token(&self.lexer_advance()?)
-                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .ok_or_else(|| unreachable!("did not match op in `BinaryOp::from_token`"))
                 .unwrap();
             let binary_expr = BinaryExpr {
                 op,
@@ -284,7 +286,7 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             let op = BinaryOp::from_token(&self.lexer_advance()?)
-                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .ok_or_else(|| unreachable!("did not match op in `BinaryOp::from_token`"))
                 .unwrap();
             let binary_expr = BinaryExpr {
                 op,
@@ -310,7 +312,7 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             let op = BinaryOp::from_token(&self.lexer_advance()?)
-                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .ok_or_else(|| unreachable!("did not match op in `BinaryOp::from_token`"))
                 .unwrap();
             let binary_expr = BinaryExpr {
                 op,
@@ -336,7 +338,7 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             let op = BinaryOp::from_token(&self.lexer_advance()?)
-                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .ok_or_else(|| unreachable!("did not match op in `BinaryOp::from_token`"))
                 .unwrap();
             let binary_expr = BinaryExpr {
                 op,
@@ -359,10 +361,9 @@ impl<'a, R: Read> Parser<'a, R> {
             _ => return self.expr_term(),
         }
 
-        let op = match UnaryOp::from_token(&self.lexer_advance()?) {
-            Some(op) => op,
-            None => unimplemented!("op not yet implemented"),
-        };
+        let op = UnaryOp::from_token(&self.lexer_advance()?)
+            .ok_or_else(|| unreachable!("did not match op in `UnaryOp::from_token`"))
+            .unwrap();
         let unary_expr = UnaryExpr {
             op,
             expr: self.expr_unary()?,
@@ -372,20 +373,20 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     fn expr_term(&mut self) -> Result<Expr> {
-        let expression = match self.lexer_advance()? {
+        let expr = match self.lexer_advance()? {
             Token::Null => Expr::Null,
             Token::Integer(integer) => Expr::Integer(integer),
             Token::Float(float) => Expr::Float(float),
             Token::Boolean(boolean) => Expr::Boolean(boolean),
-            Token::Identifier(identifier) => Expr::Identifier(identifier),
+            Token::Ident(ident) => Expr::Ident(ident),
             Token::LeftParen => {
-                let expression = self.expr()?;
+                let expr = self.expr()?;
                 self.lexer_advance_expect(Token::RightParen)?;
-                expression
+                expr
             }
             token => bail!("unexpected token: '{:?}'", token),
         };
-        Ok(expression)
+        Ok(expr)
     }
 
     fn newline(&mut self) -> Result<bool> {

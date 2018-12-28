@@ -116,7 +116,7 @@ mod r#if {
     #[test]
     fn basic() {
         let source = "
-            if true and false {
+            if true && false {
                 1 + 1
             }
         ";
