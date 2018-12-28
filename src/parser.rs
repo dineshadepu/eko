@@ -7,33 +7,54 @@ use crate::result::Result;
 
 #[derive(Debug)]
 pub struct Block {
-    pub expressions: Vec<Expression>,
-}
-
-impl Block {
-    pub fn new(expressions: Vec<Expression>) -> Block {
-        Block { expressions }
-    }
+    pub expressions: Vec<Expr>,
 }
 
 #[derive(Debug)]
-pub enum Expression {
+pub enum Expr {
     Null,
     Integer(i64),
     Float(f64),
     Boolean(bool),
     Identifier(String),
 
-    VarDeclaration(Box<Expression>),
-    Assignment(Box<Expression>, Box<Expression>),
-    Binary(BinaryOperator, Box<Expression>, Box<Expression>),
-    Unary(UnaryOperator, Box<Expression>),
+    VarDecl(Box<Expr>),
 
-    If(Box<Expression>, Block, Option<Block>),
+    If(Box<IfExpr>),
+
+    Assign(Box<AssignExpr>),
+    Binary(Box<BinaryExpr>),
+    Unary(Box<UnaryExpr>),
 }
 
 #[derive(Debug)]
-pub enum BinaryOperator {
+pub struct IfExpr {
+    pub condition: Expr,
+    pub truthy: Block,
+    pub falsey: Block,
+}
+
+#[derive(Debug)]
+pub struct AssignExpr {
+    pub target: Expr,
+    pub expr: Expr,
+}
+
+#[derive(Debug)]
+pub struct BinaryExpr {
+    pub op: BinaryOp,
+    pub left: Expr,
+    pub right: Expr,
+}
+
+#[derive(Debug)]
+pub struct UnaryExpr {
+    pub op: UnaryOp,
+    pub expr: Expr,
+}
+
+#[derive(Debug)]
+pub enum BinaryOp {
     Add,
     Subtract,
     Multiply,
@@ -49,22 +70,22 @@ pub enum BinaryOperator {
     Or,
 }
 
-impl BinaryOperator {
-    pub(crate) fn from_token(token: &Token) -> Option<BinaryOperator> {
+impl BinaryOp {
+    fn from_token(token: &Token) -> Option<BinaryOp> {
         let binary_op = match token {
-            Token::Add => BinaryOperator::Add,
-            Token::Subtract => BinaryOperator::Subtract,
-            Token::Multiply => BinaryOperator::Multiply,
-            Token::Divide => BinaryOperator::Divide,
+            Token::Add => BinaryOp::Add,
+            Token::Subtract => BinaryOp::Subtract,
+            Token::Multiply => BinaryOp::Multiply,
+            Token::Divide => BinaryOp::Divide,
 
-            Token::Equal => BinaryOperator::Equal,
-            Token::Less => BinaryOperator::Less,
-            Token::LessEqual => BinaryOperator::LessEqual,
-            Token::Greater => BinaryOperator::Greater,
-            Token::GreaterEqual => BinaryOperator::GreaterEqual,
+            Token::Equal => BinaryOp::Equal,
+            Token::Less => BinaryOp::Less,
+            Token::LessEqual => BinaryOp::LessEqual,
+            Token::Greater => BinaryOp::Greater,
+            Token::GreaterEqual => BinaryOp::GreaterEqual,
 
-            Token::And => BinaryOperator::And,
-            Token::Or => BinaryOperator::Or,
+            Token::And => BinaryOp::And,
+            Token::Or => BinaryOp::Or,
 
             _ => return None,
         };
@@ -73,16 +94,16 @@ impl BinaryOperator {
 }
 
 #[derive(Debug)]
-pub enum UnaryOperator {
+pub enum UnaryOp {
     Negate,
     Not,
 }
 
-impl UnaryOperator {
-    pub(crate) fn from_token(token: &Token) -> Option<UnaryOperator> {
+impl UnaryOp {
+    fn from_token(token: &Token) -> Option<UnaryOp> {
         let unary_op = match token {
-            Token::Subtract => UnaryOperator::Negate,
-            Token::Not => UnaryOperator::Not,
+            Token::Subtract => UnaryOp::Negate,
+            Token::Not => UnaryOp::Not,
             _ => return None,
         };
         Some(unary_op)
@@ -115,6 +136,7 @@ impl<'a, R: Read> Parser<'a, R> {
         self.newlines()?;
 
         let mut expressions = Vec::new();
+        // Whether a newline was found in the previous iteration.
         let mut newline = true;
 
         while let Some(token) = self.lexer_peek()? {
@@ -133,94 +155,125 @@ impl<'a, R: Read> Parser<'a, R> {
             }
 
             // Parse the expression and the newlines after it.
-            expressions.push(self.expression()?);
+            expressions.push(self.expr()?);
             newline = self.newline()?;
             self.newlines()?;
         }
 
-        Ok(Block::new(expressions))
+        Ok(Block { expressions })
     }
 
-    fn expression(&mut self) -> Result<Expression> {
-        let token = self
-            .lexer_peek()?
-            .cloned()
-            .ok_or_else(|| self.lexer_advance().unwrap_err())?;
-        match token {
-            Token::Var => self.var_declaration(),
-            Token::If => self.r#if(),
-            _ => self.assignment(),
+    fn expr(&mut self) -> Result<Expr> {
+        if self.lexer_peek()?.is_none() {
+            // Using this call for the error message it provides. There is not
+            // actually a next token which means this call WILL be an `Err`
+            // (which is exactly what we want).
+            self.lexer_advance()?;
+            unreachable!();
         }
+
+        let expr = match self.lexer_peek()?.unwrap() {
+            Token::Var => Expr::VarDecl(self.var_decl_expr()?.into()),
+            Token::If => Expr::If(self.if_expr()?.into()),
+            _ => self.expr_assign()?,
+        };
+
+        Ok(expr)
     }
 
-    fn var_declaration(&mut self) -> Result<Expression> {
+    fn var_decl_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Var);
-        Ok(Expression::VarDeclaration(self.expression()?.into()))
+        Ok(self.expr()?.into())
     }
 
-    fn r#if(&mut self) -> Result<Expression> {
+    fn if_expr(&mut self) -> Result<IfExpr> {
         assert_eq!(self.lexer_advance()?, Token::If);
-        let condition = self.expression()?;
 
-        let success = self.block_with_braces()?;
-
-        let mut failure = None;
-        if let Some(Token::Else) = self.lexer_peek()? {
+        let condition = self.expr()?;
+        let truthy = self.block_with_braces()?;
+        let falsey = if let Some(Token::Else) = self.lexer_peek()? {
             assert_eq!(self.lexer_advance()?, Token::Else);
             if let Some(Token::If) = self.lexer_peek()? {
-                failure = Some(Block::new(vec![self.r#if()?]));
+                Block {
+                    expressions: vec![Expr::If(self.if_expr()?.into())],
+                }
             } else {
-                failure = Some(self.block_with_braces()?);
+                self.block_with_braces()?
             }
-        }
+        } else {
+            Block {
+                expressions: vec![Expr::Null],
+            }
+        };
 
-        Ok(Expression::If(condition.into(), success, failure))
+        let if_expr = IfExpr {
+            condition,
+            truthy,
+            falsey,
+        };
+
+        Ok(if_expr)
     }
 
-    fn assignment(&mut self) -> Result<Expression> {
-        let left = self.logical()?;
+    fn expr_assign(&mut self) -> Result<Expr> {
+        let target = self.expr_logical()?;
+
         let token = match self.lexer_peek()? {
             Some(token) => token,
-            None => return Ok(left),
+            None => return Ok(target),
         };
         match token {
             Token::Assign => {}
-            _ => return Ok(left),
+            _ => return Ok(target),
         }
-        match left {
-            Expression::Identifier(_) => {}
+        match target {
+            Expr::Identifier(_) => {}
             _ => bail!("invalid left expression in assignment"),
         };
         self.lexer_advance()?;
-        Ok(Expression::Assignment(
-            left.into(),
-            self.expression()?.into(),
-        ))
+
+        let assign_expr = AssignExpr {
+            target,
+            expr: self.expr()?,
+        };
+
+        Ok(Expr::Assign(assign_expr.into()))
     }
 
-    fn logical(&mut self) -> Result<Expression> {
-        let mut left = self.compare()?;
+    fn expr_logical(&mut self) -> Result<Expr> {
+        let mut left = self.expr_compare()?;
         loop {
             let token = match self.lexer_peek()? {
                 Some(token) => token,
                 None => return Ok(left),
             };
+
             match token {
                 Token::And | Token::Or => {}
                 _ => return Ok(left),
             }
-            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary_op, left.into(), self.compare()?.into());
+
+            let op = BinaryOp::from_token(&self.lexer_advance()?)
+                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .unwrap();
+            let binary_expr = BinaryExpr {
+                op,
+                left,
+                right: self.expr_compare()?,
+            };
+
+            left = Expr::Binary(binary_expr.into());
         }
     }
 
-    fn compare(&mut self) -> Result<Expression> {
-        let mut left = self.add()?;
+    fn expr_compare(&mut self) -> Result<Expr> {
+        let mut left = self.expr_add()?;
         loop {
             let token = match self.lexer_peek()? {
                 Some(token) => token,
                 None => return Ok(left),
             };
+
             match token {
                 Token::Equal
                 | Token::Less
@@ -229,65 +282,104 @@ impl<'a, R: Read> Parser<'a, R> {
                 | Token::GreaterEqual => {}
                 _ => return Ok(left),
             }
-            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary_op, left.into(), self.add()?.into());
+
+            let op = BinaryOp::from_token(&self.lexer_advance()?)
+                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .unwrap();
+            let binary_expr = BinaryExpr {
+                op,
+                left,
+                right: self.expr_add()?,
+            };
+
+            left = Expr::Binary(binary_expr.into());
         }
     }
 
-    fn add(&mut self) -> Result<Expression> {
-        let mut left = self.multiply()?;
+    fn expr_add(&mut self) -> Result<Expr> {
+        let mut left = self.expr_multiply()?;
         loop {
             let token = match self.lexer_peek()? {
                 Some(token) => token,
                 None => return Ok(left),
             };
+
             match token {
                 Token::Add | Token::Subtract => {}
                 _ => return Ok(left),
             }
-            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary_op, left.into(), self.multiply()?.into());
+
+            let op = BinaryOp::from_token(&self.lexer_advance()?)
+                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .unwrap();
+            let binary_expr = BinaryExpr {
+                op,
+                left,
+                right: self.expr_multiply()?,
+            };
+
+            left = Expr::Binary(binary_expr.into());
         }
     }
 
-    fn multiply(&mut self) -> Result<Expression> {
-        let mut left = self.unary()?;
+    fn expr_multiply(&mut self) -> Result<Expr> {
+        let mut left = self.expr_unary()?;
         loop {
             let token = match self.lexer_peek()? {
                 Some(token) => token,
                 None => return Ok(left),
             };
+
             match token {
                 Token::Multiply | Token::Divide => {}
                 _ => return Ok(left),
             }
-            let binary_op = BinaryOperator::from_token(&self.lexer_advance()?).unwrap();
-            left = Expression::Binary(binary_op, left.into(), self.unary()?.into());
+
+            let op = BinaryOp::from_token(&self.lexer_advance()?)
+                .ok_or_else(|| unimplemented!("op not yet implemented"))
+                .unwrap();
+            let binary_expr = BinaryExpr {
+                op,
+                left,
+                right: self.expr_unary()?,
+            };
+
+            left = Expr::Binary(binary_expr.into());
         }
     }
 
-    fn unary(&mut self) -> Result<Expression> {
+    fn expr_unary(&mut self) -> Result<Expr> {
         let token = match self.lexer_peek()? {
             Some(token) => token,
-            None => return self.term(),
+            None => return self.expr_term(),
         };
+
         match token {
             Token::Subtract | Token::Not => {}
-            _ => return self.term(),
+            _ => return self.expr_term(),
         }
-        let unary_op = UnaryOperator::from_token(&self.lexer_advance()?).unwrap();
-        Ok(Expression::Unary(unary_op, self.unary()?.into()))
+
+        let op = match UnaryOp::from_token(&self.lexer_advance()?) {
+            Some(op) => op,
+            None => unimplemented!("op not yet implemented"),
+        };
+        let unary_expr = UnaryExpr {
+            op,
+            expr: self.expr_unary()?,
+        };
+
+        Ok(Expr::Unary(unary_expr.into()))
     }
 
-    fn term(&mut self) -> Result<Expression> {
+    fn expr_term(&mut self) -> Result<Expr> {
         let expression = match self.lexer_advance()? {
-            Token::Null => Expression::Null,
-            Token::Integer(integer) => Expression::Integer(integer),
-            Token::Float(integer) => Expression::Float(integer),
-            Token::Boolean(boolean) => Expression::Boolean(boolean),
-            Token::Identifier(identifier) => Expression::Identifier(identifier),
+            Token::Null => Expr::Null,
+            Token::Integer(integer) => Expr::Integer(integer),
+            Token::Float(float) => Expr::Float(float),
+            Token::Boolean(boolean) => Expr::Boolean(boolean),
+            Token::Identifier(identifier) => Expr::Identifier(identifier),
             Token::LeftParen => {
-                let expression = self.expression()?;
+                let expression = self.expr()?;
                 self.lexer_advance_expect(Token::RightParen)?;
                 expression
             }

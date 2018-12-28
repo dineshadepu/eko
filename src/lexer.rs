@@ -61,7 +61,7 @@ impl<R: Read> Lexer<R> {
         let token = match byte {
             b'\n' => self.newline()?,
             byte if is_digit(byte) => self.number()?,
-            byte if is_operator(byte) => self.operator()?,
+            byte if is_op(byte) => self.op()?,
             byte if is_alpha(byte) || byte == b'_' => self.identifier()?,
             _ => bail!("unexpected byte: '{}'", byte),
         };
@@ -95,7 +95,7 @@ impl<R: Read> Lexer<R> {
         }
     }
 
-    fn operator(&mut self) -> Result<Token> {
+    fn op(&mut self) -> Result<Token> {
         let first = self.source_advance()?;
         let second = self.source_peek()?;
         let token = match (first, second) {
@@ -116,7 +116,7 @@ impl<R: Read> Lexer<R> {
             (b'&', Some(b'&')) => Token::And,
             (b'|', Some(b'|')) => Token::Or,
             (b'!', _) => Token::Not,
-            _ => unimplemented!("operator not yet implemented"),
+            _ => unimplemented!("op not yet implemented"),
         };
         Ok(token)
     }
@@ -196,7 +196,7 @@ fn is_digit(byte: u8) -> bool {
     byte >= b'0' && byte <= b'9'
 }
 
-fn is_operator(byte: u8) -> bool {
+fn is_op(byte: u8) -> bool {
     match byte {
         b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' | b'(' | b')' | b'{' | b'}' | b'&'
         | b'|' | b'!' => true,
