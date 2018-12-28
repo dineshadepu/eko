@@ -2,7 +2,7 @@ use std::io::{ErrorKind, Read};
 
 use failure::{bail, format_err};
 
-use crate::engine::{Result, State};
+use crate::result::Result;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
@@ -31,7 +31,7 @@ pub enum Token {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Identifier(usize),
+    Identifier(String),
 
     Var,
     If,
@@ -40,19 +40,14 @@ pub enum Token {
     Newline,
 }
 
-pub struct Lexer<'a, R: Read> {
-    state: &'a mut State,
+pub struct Lexer<R: Read> {
     source: R,
     peek: Option<u8>,
 }
 
-impl<'a, R: Read> Lexer<'a, R> {
-    pub fn new(state: &'a mut State, source: R) -> Lexer<'a, R> {
-        Lexer {
-            state,
-            source,
-            peek: None,
-        }
+impl<R: Read> Lexer<R> {
+    pub fn new(source: R) -> Lexer<R> {
+        Lexer { source, peek: None }
     }
 
     pub fn next(&mut self) -> Result<Option<Token>> {
@@ -144,7 +139,7 @@ impl<'a, R: Read> Lexer<'a, R> {
             "var" => Token::Var,
             "if" => Token::If,
             "else" => Token::Else,
-            _ => Token::Identifier(self.state.identifiers.insert_or_push(buf)),
+            _ => Token::Identifier(buf),
         };
         Ok(token)
     }

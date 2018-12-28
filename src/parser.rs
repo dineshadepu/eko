@@ -2,8 +2,8 @@ use std::io::Read;
 
 use failure::{bail, format_err};
 
-use crate::engine::Result;
 use crate::lexer::{Lexer, Token};
+use crate::result::Result;
 
 #[derive(Debug)]
 pub struct Block {
@@ -18,11 +18,11 @@ impl Block {
 
 #[derive(Debug)]
 pub enum Expression {
+    Null,
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Null,
-    Identifier(usize),
+    Identifier(String),
 
     VarDeclaration(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
@@ -90,12 +90,12 @@ impl UnaryOperator {
 }
 
 pub struct Parser<'a, R: Read> {
-    lexer: &'a mut Lexer<'a, R>,
+    lexer: &'a mut Lexer<R>,
     peek: Option<Token>,
 }
 
 impl<'a, R: Read> Parser<'a, R> {
-    pub fn new(lexer: &'a mut Lexer<'a, R>) -> Parser<'a, R> {
+    pub fn new(lexer: &'a mut Lexer<R>) -> Parser<'a, R> {
         Parser { lexer, peek: None }
     }
 

@@ -1,10 +1,15 @@
-pub use crate::engine::{Engine, State};
+pub use crate::engine::Engine;
+pub use crate::result::Result;
 pub use crate::value::Value;
 
 mod engine;
-mod fiber;
-mod compiler;
+mod interpreter;
 mod lexer;
 mod parser;
-mod pool;
 mod value;
+
+mod result {
+    use failure::Error;
+
+    pub type Result<T> = std::result::Result<T, Error>;
+}
