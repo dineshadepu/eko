@@ -31,14 +31,14 @@ mod binary {
 
     #[test]
     fn and() {
-        let source = "true and false";
+        let source = "true && false";
         let mut engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), false.into());
     }
 
     #[test]
     fn or() {
-        let source = "true or true";
+        let source = "true || true";
         let mut engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), true.into());
     }
@@ -56,7 +56,7 @@ mod unary {
 
     #[test]
     fn not() {
-        let source = "not false";
+        let source = "!false";
         let mut engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), true.into());
     }
