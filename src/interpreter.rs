@@ -1,6 +1,8 @@
 use fnv::FnvHashMap;
 
-use crate::parser::{AssignExpr, BinaryExpr, BinaryOp, Block, Expr, IfExpr, UnaryExpr, UnaryOp};
+use crate::parser::{
+    AssignExpr, BinaryExpr, BinaryOp, Block, Expr, IfExpr, UnaryExpr, UnaryOp, WhileExpr,
+};
 use crate::result::Result;
 use crate::value::Value;
 
@@ -51,6 +53,7 @@ impl Interpreter {
             VarDecl(expr) => self.var_decl_expr(scope, *expr)?,
 
             If(if_expr) => self.if_expr(scope, *if_expr)?,
+            While(while_expr) => self.while_expr(scope, *while_expr)?,
 
             Assign(assign_expr) => self.assign_expr(scope, *assign_expr)?,
             Binary(binary_expr) => self.binary_expr(scope, *binary_expr)?,
@@ -99,6 +102,13 @@ impl Interpreter {
         } else {
             self.block(scope, if_expr.falsey)
         }
+    }
+
+    fn while_expr(&mut self, scope: &mut Scope, while_expr: WhileExpr) -> Result<Value> {
+        while self.expr(scope, while_expr.condition.clone())?.is_truthy() {
+            self.block(scope, while_expr.block.clone())?;
+        }
+        Ok(Value::Null)
     }
 
     fn assign_expr(&mut self, scope: &mut Scope, assign_expr: AssignExpr) -> Result<Value> {

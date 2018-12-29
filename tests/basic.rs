@@ -174,6 +174,34 @@ mod r#if {
     }
 }
 
+mod r#while {
+    use eko::{Engine, Value};
+
+    #[test]
+    fn basic() {
+        let source = "
+            var x = 10
+            var y = 0
+            while x > 0 {
+                x = x - 1
+                y = y + 1
+            }
+            y
+        ";
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_str(source).unwrap(), 10.into());
+    }
+
+    #[test]
+    fn single_line() {
+        let source = "
+            while false {}
+        ";
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
+    }
+}
+
 mod newline {
     use eko::Engine;
 

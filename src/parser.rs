@@ -5,12 +5,12 @@ use failure::{bail, format_err};
 use crate::lexer::{Lexer, Token};
 use crate::result::Result;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub exprs: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Null,
     Integer(i64),
@@ -21,39 +21,46 @@ pub enum Expr {
     VarDecl(Box<Expr>),
 
     If(Box<IfExpr>),
+    While(Box<WhileExpr>),
 
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct IfExpr {
     pub condition: Expr,
     pub truthy: Block,
     pub falsey: Block,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct WhileExpr {
+    pub condition: Expr,
+    pub block: Block,
+}
+
+#[derive(Clone, Debug)]
 pub struct AssignExpr {
     pub target: Expr,
     pub expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BinaryExpr {
     pub op: BinaryOp,
     pub left: Expr,
     pub right: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -93,7 +100,7 @@ impl BinaryOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOp {
     Negate,
     Not,
@@ -176,6 +183,7 @@ impl<'a, R: Read> Parser<'a, R> {
             Token::Var => Expr::VarDecl(self.var_decl_expr()?.into()),
 
             Token::If => Expr::If(self.if_expr()?.into()),
+            Token::While => Expr::While(self.while_expr()?.into()),
 
             _ => self.expr_assign()?,
         };
@@ -215,6 +223,17 @@ impl<'a, R: Read> Parser<'a, R> {
         };
 
         Ok(if_expr)
+    }
+
+    fn while_expr(&mut self) -> Result<WhileExpr> {
+        assert_eq!(self.lexer_advance()?, Token::While);
+
+        let condition = self.expr()?;
+        let block = self.block_with_braces()?;
+
+        let while_expr = WhileExpr { condition, block };
+
+        Ok(while_expr)
     }
 
     fn expr_assign(&mut self) -> Result<Expr> {

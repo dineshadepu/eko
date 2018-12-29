@@ -36,6 +36,7 @@ pub enum Token {
     Var,
     If,
     Else,
+    While,
 
     Newline,
 }
@@ -154,6 +155,7 @@ impl<R: Read> Lexer<R> {
             "var" => Token::Var,
             "if" => Token::If,
             "else" => Token::Else,
+            "while" => Token::While,
             _ => Token::Ident(buf),
         };
         Ok(token)
