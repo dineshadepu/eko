@@ -193,7 +193,18 @@ impl<'a, R: Read> Parser<'a, R> {
 
     fn var_decl_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Var);
-        Ok(self.expr()?.into())
+        let expr = self.expr()?;
+        match &expr {
+            // Only supported l-value in variable declarations is
+            // `Expr::Ident`, since variable declaration is local.
+            Expr::Assign(assign_expr) => match &assign_expr.target {
+                Expr::Ident(_) => {}
+                _ => bail!("invalid left expression in variable delcaration"),
+            },
+            Expr::Ident(_) => {}
+            _ => bail!("invalid expression in variable declaration"),
+        }
+        Ok(expr)
     }
 
     fn if_expr(&mut self) -> Result<IfExpr> {
