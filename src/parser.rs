@@ -25,6 +25,7 @@ pub enum Expr {
 
     Return(Box<Expr>),
     Break(Box<Expr>),
+    Throw(Box<Expr>),
 
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
@@ -212,6 +213,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
             Token::Return => Expr::Return(self.return_expr()?.into()),
             Token::Break => Expr::Break(self.break_expr()?.into()),
+            Token::Throw => Expr::Throw(self.throw_expr()?.into()),
 
             _ => self.expr_assign()?,
         };
@@ -277,20 +279,26 @@ impl<'a, R: Read> Parser<'a, R> {
 
     fn return_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Return);
-        if let Ok(expr) = self.expr() {
-            Ok(expr)
-        } else {
-            Ok(Expr::Null)
-        }
+        self.expr_or_null()
     }
 
     fn break_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Break);
-        if let Ok(expr) = self.expr() {
-            Ok(expr)
+        self.expr_or_null()
+    }
+
+    fn throw_expr(&mut self) -> Result<Expr> {
+        assert_eq!(self.lexer_advance()?, Token::Throw);
+        self.expr_or_null()
+    }
+
+    fn expr_or_null(&mut self) -> Result<Expr> {
+        let expr = if let Ok(expr) = self.expr() {
+            expr
         } else {
-            Ok(Expr::Null)
-        }
+            Expr::Null
+        };
+        Ok(expr)
     }
 
     fn expr_assign(&mut self) -> Result<Expr> {

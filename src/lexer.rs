@@ -40,6 +40,7 @@ pub enum Token {
 
     Return,
     Break,
+    Throw,
 
     Newline,
 }
@@ -161,6 +162,7 @@ impl<R: Read> Lexer<R> {
             "while" => Token::While,
             "return" => Token::Return,
             "break" => Token::Break,
+            "throw" => Token::Throw,
             _ => Token::Ident(buf),
         };
         Ok(token)

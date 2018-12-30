@@ -53,6 +53,9 @@ impl Scope {
 }
 
 /// Returns early if the kind of return value is not `ImplicitReturn`.
+///
+/// Can be thought of as similar to the `?` operator where in this case
+/// `ImplicitReturn` is `Ok` and the rest are all `Err`.
 macro_rules! try_return {
     ($expr:expr) => {{
         let return_value: crate::interpreter::ReturnValue = $expr;
@@ -110,6 +113,7 @@ impl Interpreter {
 
             Return(return_expr) => self.return_expr(scope, *return_expr)?,
             Break(break_expr) => self.break_expr(scope, *break_expr)?,
+            Throw(throw_expr) => self.throw_expr(scope, *throw_expr)?,
 
             Assign(assign_expr) => self.assign_expr(scope, *assign_expr)?,
             Binary(binary_expr) => self.binary_expr(scope, *binary_expr)?,
@@ -198,6 +202,14 @@ impl Interpreter {
         let return_value = ReturnValue {
             kind: ReturnValueKind::Break,
             value: try_return!(self.expr(scope, break_expr)?),
+        };
+        Ok(return_value)
+    }
+
+    fn throw_expr(&mut self, scope: &mut Scope, throw_expr: Expr) -> Result<ReturnValue> {
+        let return_value = ReturnValue {
+            kind: ReturnValueKind::Throw,
+            value: try_return!(self.expr(scope, throw_expr)?),
         };
         Ok(return_value)
     }
