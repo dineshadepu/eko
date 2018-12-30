@@ -23,6 +23,9 @@ pub enum Expr {
     If(Box<IfExpr>),
     While(Box<WhileExpr>),
 
+    Return(Box<Expr>),
+    Break(Box<Expr>),
+
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
@@ -128,7 +131,9 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     pub fn parse(&mut self) -> Result<Block> {
-        self.block_with_terminal(None)
+        let block = self.block_with_terminal(None);
+        println!("{:?}", block);
+        block
     }
 
     fn block_with_braces(&mut self) -> Result<Block> {
@@ -184,6 +189,9 @@ impl<'a, R: Read> Parser<'a, R> {
 
             Token::If => Expr::If(self.if_expr()?.into()),
             Token::While => Expr::While(self.while_expr()?.into()),
+
+            Token::Return => Expr::Return(self.return_expr()?.into()),
+            Token::Break => Expr::Break(self.break_expr()?.into()),
 
             _ => self.expr_assign()?,
         };
@@ -245,6 +253,26 @@ impl<'a, R: Read> Parser<'a, R> {
         let while_expr = WhileExpr { condition, block };
 
         Ok(while_expr)
+    }
+
+    fn return_expr(&mut self) -> Result<Expr> {
+        assert_eq!(self.lexer_advance()?, Token::Return);
+        match self.lexer_peek()? {
+            // FIXME: Think of a better solution to check for termination.
+            Some(Token::RightBrace) | Some(Token::Newline) | None => return Ok(Expr::Null),
+            _ => {}
+        }
+        Ok(self.expr()?)
+    }
+
+    fn break_expr(&mut self) -> Result<Expr> {
+        assert_eq!(self.lexer_advance()?, Token::Break);
+        match self.lexer_peek()? {
+            // FIXME: Think of a better solution to check for termination.
+            Some(Token::RightBrace) | Some(Token::Newline) | None => return Ok(Expr::Null),
+            _ => {}
+        }
+        Ok(self.expr()?)
     }
 
     fn expr_assign(&mut self) -> Result<Expr> {

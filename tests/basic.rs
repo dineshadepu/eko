@@ -193,6 +193,21 @@ mod r#while {
     }
 
     #[test]
+    fn r#break() {
+        let source = "
+            var x = 10
+            while x > 0 {
+                x = x - 1
+                if x < 5 {
+                    break x
+                }
+            }
+        ";
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_str(source).unwrap(), 4.into());
+    }
+
+    #[test]
     fn single_line() {
         let source = "
             while false {}

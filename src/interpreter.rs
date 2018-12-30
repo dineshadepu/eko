@@ -8,6 +8,7 @@ use crate::result::Result;
 use crate::value::Value;
 
 /// Represents the return value of a block.
+#[derive(Debug)]
 struct ReturnValue {
     kind: ReturnValueKind,
     value: Value,
@@ -27,7 +28,7 @@ impl From<Value> for ReturnValue {
 /// It is important to distinguish between an implicit and explicit return since
 /// in `if` and `while` expressions explicit returns need to propogate to the
 /// parent block.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum ReturnValueKind {
     /// The value of the last expression in the block.
     ImplicitReturn,
@@ -51,28 +52,15 @@ impl Scope {
     }
 }
 
-/// Returns early only if the kind of expression is `Throw`.
-macro_rules! try_throw {
+/// Returns early if the kind of return value is not `ImplicitReturn`.
+macro_rules! try_return {
     ($expr:expr) => {{
-        let result: crate::interpreter::ReturnValue = $expr;
-        match &result.kind {
-            crate::interpreter::ReturnValueKind::ImplicitReturn => result.value,
-            crate::interpreter::ReturnValueKind::ExplicitReturn => result.value,
-            crate::interpreter::ReturnValueKind::Break => result.value,
-            crate::interpreter::ReturnValueKind::Throw => return Ok(result),
-        }
-    }};
-}
-
-/// Returns early if the kind of expression is `Throw` or `ExplicitReturn`.
-macro_rules! try_explicit_return {
-    ($expr:expr) => {{
-        let result: crate::interpreter::ReturnValue = $expr;
-        match &result.kind {
-            crate::interpreter::ReturnValueKind::ImplicitReturn => result.value,
-            crate::interpreter::ReturnValueKind::ExplicitReturn => return Ok(result),
-            crate::interpreter::ReturnValueKind::Break => result.value,
-            crate::interpreter::ReturnValueKind::Throw => return Ok(result),
+        let return_value: crate::interpreter::ReturnValue = $expr;
+        match &return_value.kind {
+            crate::interpreter::ReturnValueKind::ImplicitReturn => return_value.value,
+            crate::interpreter::ReturnValueKind::ExplicitReturn => return Ok(return_value),
+            crate::interpreter::ReturnValueKind::Break => return Ok(return_value),
+            crate::interpreter::ReturnValueKind::Throw => return Ok(return_value),
         }
     }};
 }
@@ -100,7 +88,7 @@ impl Interpreter {
             None => return Ok(Value::Null.into()),
         };
         for expr in block.exprs {
-            try_explicit_return!(self.expr(scope, expr)?);
+            try_return!(self.expr(scope, expr)?);
         }
         self.expr(scope, last_expr)
     }
@@ -119,6 +107,9 @@ impl Interpreter {
 
             If(if_expr) => self.if_expr(scope, *if_expr)?,
             While(while_expr) => self.while_expr(scope, *while_expr)?,
+
+            Return(return_expr) => self.return_expr(scope, *return_expr)?,
+            Break(break_expr) => self.break_expr(scope, *break_expr)?,
 
             Assign(assign_expr) => self.assign_expr(scope, *assign_expr)?,
             Binary(binary_expr) => self.binary_expr(scope, *binary_expr)?,
@@ -160,7 +151,8 @@ impl Interpreter {
     }
 
     fn if_expr(&mut self, scope: &mut Scope, if_expr: IfExpr) -> Result<ReturnValue> {
-        if try_throw!(self.expr(scope, if_expr.condition)?).is_truthy() {
+        let condition = try_return!(self.expr(scope, if_expr.condition)?);
+        if condition.is_truthy() {
             self.block(scope, if_expr.truthy)
         } else {
             self.block(scope, if_expr.falsey)
@@ -168,14 +160,51 @@ impl Interpreter {
     }
 
     fn while_expr(&mut self, scope: &mut Scope, while_expr: WhileExpr) -> Result<ReturnValue> {
-        while try_throw!(self.expr(scope, while_expr.condition.clone())?).is_truthy() {
-            self.block(scope, while_expr.block.clone())?;
+        use self::ReturnValueKind::*;
+
+        loop {
+            let return_value = self.expr(scope, while_expr.condition.clone())?;
+            let condition = match return_value.kind {
+                ImplicitReturn => return_value.value,
+                ExplicitReturn => return Ok(return_value),
+                Throw => return Ok(return_value),
+                Break => {
+                    let return_value = ReturnValue {
+                        kind: ImplicitReturn,
+                        value: return_value.value,
+                    };
+                    return Ok(return_value);
+                }
+            };
+
+            if condition.is_falsey() {
+                break;
+            }
+
+            try_return!(self.block(scope, while_expr.block.clone())?);
         }
         Ok(Value::Null.into())
     }
 
+    fn return_expr(&mut self, scope: &mut Scope, return_expr: Expr) -> Result<ReturnValue> {
+        let return_value = ReturnValue {
+            kind: ReturnValueKind::ExplicitReturn,
+            value: try_return!(self.expr(scope, return_expr)?),
+        };
+        Ok(return_value)
+    }
+
+    fn break_expr(&mut self, scope: &mut Scope, break_expr: Expr) -> Result<ReturnValue> {
+        let return_value = ReturnValue {
+            kind: ReturnValueKind::Break,
+            value: try_return!(self.expr(scope, break_expr)?),
+        };
+        Ok(return_value)
+    }
+
     fn assign_expr(&mut self, scope: &mut Scope, assign_expr: AssignExpr) -> Result<ReturnValue> {
-        let value = try_throw!(self.expr(scope, assign_expr.expr)?);
+        let value = try_return!(self.expr(scope, assign_expr.expr)?);
+
         match assign_expr.target {
             Expr::Ident(ident) => {
                 if scope.variables.get(&ident).is_some() {
@@ -193,8 +222,9 @@ impl Interpreter {
         use self::BinaryOp::*;
         use self::Value::*;
 
-        let left = try_throw!(self.expr(scope, binary_expr.left)?);
-        let right = try_throw!(self.expr(scope, binary_expr.right)?);
+        let left = try_return!(self.expr(scope, binary_expr.left)?);
+        let right = try_return!(self.expr(scope, binary_expr.right)?);
+
         let result = match (binary_expr.op, left, right) {
             (Add, Integer(left), Integer(right)) => Integer(left + right),
             (Add, Integer(left), Float(right)) => Float(left as f64 + right),
@@ -239,7 +269,8 @@ impl Interpreter {
         use self::UnaryOp::*;
         use self::Value::*;
 
-        let operand = try_throw!(self.expr(scope, unary_expr.expr)?);
+        let operand = try_return!(self.expr(scope, unary_expr.expr)?);
+
         let result = match (unary_expr.op, operand) {
             (Negate, Integer(integer)) => Integer(-integer),
             (Negate, Float(float)) => Float(-float),
