@@ -131,19 +131,37 @@ impl<'a, R: Read> Parser<'a, R> {
     }
 
     pub fn parse(&mut self) -> Result<Block> {
-        let block = self.block_with_terminal(None);
-        println!("{:?}", block);
-        block
+        self.block()
     }
 
+    /// Parses a block of expressions separated by newlines.
+    ///
+    /// For better documentation on how the function works internally, refer to
+    /// `block_with_braces`, as the two are mostly similar (with the exceptions)
+    /// of the initial and final checking for braces.
+    fn block(&mut self) -> Result<Block> {
+        self.newlines()?;
+
+        let mut exprs = Vec::new();
+        let mut newline = true;
+
+        while self.lexer_peek()?.is_some() {
+            if !newline {
+                self.lexer_advance_expect(Token::Newline)?;
+            }
+            exprs.push(self.expr()?);
+            newline = self.newline()?;
+            self.newlines()?;
+        }
+
+        Ok(Block { exprs })
+    }
+
+    /// Parses a block of expressions, separated by newlines and surrounded by
+    /// braces.
     fn block_with_braces(&mut self) -> Result<Block> {
         self.lexer_advance_expect(Token::LeftBrace)?;
-        let block = self.block_with_terminal(Some(Token::RightBrace))?;
-        assert_eq!(self.lexer_advance()?, Token::RightBrace);
-        Ok(block)
-    }
 
-    fn block_with_terminal(&mut self, terminal: Option<Token>) -> Result<Block> {
         // Get rid of any preceding newlines first.
         self.newlines()?;
 
@@ -152,11 +170,9 @@ impl<'a, R: Read> Parser<'a, R> {
         let mut newline = true;
 
         while let Some(token) = self.lexer_peek()? {
-            // Stop if `terminal` has been reached.
-            if let Some(terminal) = &terminal {
-                if token == terminal {
-                    break;
-                }
+            // Stop if a `Token::RightBrace` has been reached.
+            if token == &Token::RightBrace {
+                break;
             }
 
             // If the previous line did not end with a newline, there cannot
@@ -172,7 +188,11 @@ impl<'a, R: Read> Parser<'a, R> {
             self.newlines()?;
         }
 
-        Ok(Block { exprs })
+        let block = Block { exprs };
+
+        assert_eq!(self.lexer_advance()?, Token::RightBrace);
+
+        Ok(block)
     }
 
     fn expr(&mut self) -> Result<Expr> {
@@ -257,22 +277,20 @@ impl<'a, R: Read> Parser<'a, R> {
 
     fn return_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Return);
-        match self.lexer_peek()? {
-            // FIXME: Think of a better solution to check for termination.
-            Some(Token::RightBrace) | Some(Token::Newline) | None => return Ok(Expr::Null),
-            _ => {}
+        if let Ok(expr) = self.expr() {
+            Ok(expr)
+        } else {
+            Ok(Expr::Null)
         }
-        Ok(self.expr()?)
     }
 
     fn break_expr(&mut self) -> Result<Expr> {
         assert_eq!(self.lexer_advance()?, Token::Break);
-        match self.lexer_peek()? {
-            // FIXME: Think of a better solution to check for termination.
-            Some(Token::RightBrace) | Some(Token::Newline) | None => return Ok(Expr::Null),
-            _ => {}
+        if let Ok(expr) = self.expr() {
+            Ok(expr)
+        } else {
+            Ok(Expr::Null)
         }
-        Ok(self.expr()?)
     }
 
     fn expr_assign(&mut self) -> Result<Expr> {
