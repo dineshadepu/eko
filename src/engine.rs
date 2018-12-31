@@ -1,19 +1,19 @@
 use std::io::{Cursor, Read};
 
-use crate::interpreter::{Interpreter, Scope};
+use crate::interpreter::{Context, Interpreter};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::result::Result;
 use crate::value::Value;
 
 pub struct Engine {
-    scope: Scope,
+    ctx: Context,
 }
 
 impl Engine {
     pub fn new() -> Engine {
         Engine {
-            scope: Scope::new(),
+            ctx: Context::new(),
         }
     }
 
@@ -24,6 +24,6 @@ impl Engine {
     pub fn evaluate<R: Read>(&mut self, source: R) -> Result<Value> {
         let mut lexer = Lexer::new(source);
         let block = Parser::new(&mut lexer).parse()?;
-        Interpreter::new().evaluate(&mut self.scope, block)
+        Interpreter::new().evaluate(&mut self.ctx, block)
     }
 }

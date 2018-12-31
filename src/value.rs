@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::interpreter::Scope;
 use crate::parser::{Block, Params};
 
 #[derive(Clone, Debug)]
@@ -68,11 +70,11 @@ where
     }
 }
 
-impl<T> From<Option<T>> for Value
+impl<V> From<Option<V>> for Value
 where
-    T: Into<Value>,
+    V: Into<Value>,
 {
-    fn from(option: Option<T>) -> Value {
+    fn from(option: Option<V>) -> Value {
         match option {
             Some(value) => value.into(),
             None => Value::Null,
@@ -93,6 +95,7 @@ impl From<InternalFuncReference> for Reference {
 
 #[derive(Debug)]
 pub struct InternalFuncReference {
+    pub scope: Rc<RefCell<Scope>>,
     pub params: Params,
     pub block: Block,
 }

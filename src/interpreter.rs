@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use failure::bail;
 use indexmap::IndexMap;
 
@@ -41,13 +44,105 @@ enum ReturnValueKind {
     Throw,
 }
 
+pub struct Context(Option<ContextData>);
+
+impl Context {
+    pub fn new() -> Context {
+        Scope::new().into()
+    }
+
+    fn escape(&mut self) -> Rc<RefCell<Scope>> {
+        use self::ContextData::*;
+
+        match self
+            .0
+            .take()
+            .expect("`ContextData` should never be `None`, except in `escape`")
+        {
+            Local(scope) => {
+                let escaped_scope = Rc::new(RefCell::new(scope));
+                self.0 = Some(Escaped(escaped_scope.clone()));
+                escaped_scope
+            }
+            Escaped(scope) => {
+                self.0 = Some(Escaped(scope.clone()));
+                scope
+            }
+        }
+    }
+
+    fn declare_variable(&mut self, ident: String, value: Value) -> bool {
+        use self::ContextData::*;
+
+        match self.data_mut() {
+            Local(scope) => scope.declare_variable(ident, value),
+            Escaped(scope) => scope.borrow_mut().declare_variable(ident, value),
+        }
+    }
+
+    fn set_variable(&mut self, ident: String, value: Value) -> bool {
+        use self::ContextData::*;
+
+        match self.data_mut() {
+            Local(scope) => scope.set_variable(ident, value),
+            Escaped(scope) => scope.borrow_mut().set_variable(ident, value),
+        }
+    }
+
+    fn variable(&self, ident: &String) -> Option<Value> {
+        use self::ContextData::*;
+
+        match self.data() {
+            Local(scope) => scope.variable(ident),
+            Escaped(scope) => scope.borrow_mut().variable(ident),
+        }
+    }
+
+    fn data(&self) -> &ContextData {
+        self.0
+            .as_ref()
+            .expect("`ContextData` should never be `None`, except in `escape`")
+    }
+
+    fn data_mut(&mut self) -> &mut ContextData {
+        self.0
+            .as_mut()
+            .expect("`ContextData` should never be `None`, except in `escape`")
+    }
+}
+
+impl From<Scope> for Context {
+    fn from(scope: Scope) -> Context {
+        Context(Some(ContextData::Local(scope)))
+    }
+}
+
+/// Contains the actual context data.
+///
+/// Used to get around the inability to modify `Context` in place, if it were
+/// an enum.
+enum ContextData {
+    Local(Scope),
+    Escaped(Rc<RefCell<Scope>>),
+}
+
+#[derive(Debug)]
 pub struct Scope {
+    parent: Option<Rc<RefCell<Scope>>>,
     variables: IndexMap<String, Value>,
 }
 
 impl Scope {
     pub fn new() -> Scope {
         Scope {
+            parent: None,
+            variables: IndexMap::new(),
+        }
+    }
+
+    fn with_parent(parent: Rc<RefCell<Scope>>) -> Scope {
+        Scope {
+            parent: Some(parent),
             variables: IndexMap::new(),
         }
     }
@@ -60,6 +155,41 @@ impl Scope {
         }
         self.variables.insert(ident, value);
         true
+    }
+
+    /// Sets the value of a variable if it exists and returns whether the
+    /// variable was successfully set.
+    ///
+    /// This fails is the variable is not declared.
+    ///
+    /// FIXME: Implement this iteratively.
+    fn set_variable(&mut self, ident: String, value: Value) -> bool {
+        if self.local_variable(&ident).is_some() {
+            self.variables.insert(ident, value);
+            true
+        } else if let Some(parent) = &self.parent {
+            parent.borrow_mut().set_variable(ident, value)
+        } else {
+            false
+        }
+    }
+
+    /// Finds and returns the value of a local variable.
+    fn local_variable(&self, ident: &String) -> Option<Value> {
+        self.variables.get(ident).cloned()
+    }
+
+    /// Finds and returns the value of a variable.
+    ///
+    /// FIXME: Implement this iteratively.
+    fn variable(&self, ident: &String) -> Option<Value> {
+        if let Some(value) = self.variables.get(ident) {
+            Some(value.clone())
+        } else {
+            self.parent
+                .as_ref()
+                .and_then(|parent| parent.borrow().variable(ident))
+        }
     }
 }
 
@@ -86,28 +216,28 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn evaluate(&mut self, scope: &mut Scope, block: Block) -> Result<Value> {
+    pub fn evaluate(&mut self, ctx: &mut Context, block: Block) -> Result<Value> {
         use self::ReturnValueKind::*;
 
-        let return_value = self.block(scope, block)?;
+        let return_value = self.block(ctx, block)?;
         match return_value.kind {
             Throw => unimplemented!("convert `Value` to `failure::Error`"),
             _ => Ok(return_value.value),
         }
     }
 
-    fn block(&mut self, scope: &mut Scope, mut block: Block) -> Result<ReturnValue> {
+    fn block(&mut self, ctx: &mut Context, mut block: Block) -> Result<ReturnValue> {
         let last_expr = match block.exprs.pop() {
             Some(expr) => expr,
             None => return Ok(Value::Null.into()),
         };
         for expr in block.exprs {
-            try_return!(self.expr(scope, expr)?);
+            try_return!(self.expr(ctx, expr)?);
         }
-        self.expr(scope, last_expr)
+        self.expr(ctx, last_expr)
     }
 
-    fn expr(&mut self, scope: &mut Scope, expr: Expr) -> Result<ReturnValue> {
+    fn expr(&mut self, ctx: &mut Context, expr: Expr) -> Result<ReturnValue> {
         use self::Expr::*;
 
         let return_value = match expr {
@@ -115,52 +245,52 @@ impl Interpreter {
             Integer(integer) => Value::Integer(integer).into(),
             Float(float) => Value::Float(float).into(),
             Boolean(boolean) => Value::Boolean(boolean).into(),
-            Ident(ident) => self.ident(scope, ident)?,
+            Ident(ident) => self.ident(ctx, ident)?,
 
-            VarDecl(expr) => self.var_decl_expr(scope, *expr)?,
-            FuncDecl(func_decl_expr) => self.func_decl_expr(scope, *func_decl_expr)?,
+            VarDecl(expr) => self.var_decl_expr(ctx, *expr)?,
+            FuncDecl(func_decl_expr) => self.func_decl_expr(ctx, *func_decl_expr)?,
 
-            If(if_expr) => self.if_expr(scope, *if_expr)?,
-            While(while_expr) => self.while_expr(scope, *while_expr)?,
-            TryCatch(try_catch_expr) => self.try_catch_expr(scope, *try_catch_expr)?,
+            If(if_expr) => self.if_expr(ctx, *if_expr)?,
+            While(while_expr) => self.while_expr(ctx, *while_expr)?,
+            TryCatch(try_catch_expr) => self.try_catch_expr(ctx, *try_catch_expr)?,
 
-            Return(return_expr) => self.return_expr(scope, *return_expr)?,
-            Break(break_expr) => self.break_expr(scope, *break_expr)?,
-            Throw(throw_expr) => self.throw_expr(scope, *throw_expr)?,
+            Return(return_expr) => self.return_expr(ctx, *return_expr)?,
+            Break(break_expr) => self.break_expr(ctx, *break_expr)?,
+            Throw(throw_expr) => self.throw_expr(ctx, *throw_expr)?,
 
-            Assign(assign_expr) => self.assign_expr(scope, *assign_expr)?,
-            Binary(binary_expr) => self.binary_expr(scope, *binary_expr)?,
-            Unary(unary_expr) => self.unary_expr(scope, *unary_expr)?,
+            Assign(assign_expr) => self.assign_expr(ctx, *assign_expr)?,
+            Binary(binary_expr) => self.binary_expr(ctx, *binary_expr)?,
+            Unary(unary_expr) => self.unary_expr(ctx, *unary_expr)?,
         };
         Ok(return_value)
     }
 
-    fn ident(&mut self, scope: &mut Scope, ident: String) -> Result<ReturnValue> {
-        if let Some(value) = scope.variables.get(&ident) {
+    fn ident(&mut self, ctx: &mut Context, ident: String) -> Result<ReturnValue> {
+        if let Some(value) = ctx.variable(&ident) {
             Ok(value.clone().into())
         } else {
             bail!("failed to find variable: {}", ident);
         }
     }
 
-    fn var_decl_expr(&mut self, scope: &mut Scope, expr: Expr) -> Result<ReturnValue> {
+    fn var_decl_expr(&mut self, ctx: &mut Context, expr: Expr) -> Result<ReturnValue> {
         match expr {
             Expr::Assign(assign_expr) => {
                 if let Expr::Ident(ident) = &assign_expr.target {
                     // Declare the variable with `Value::Null` first, before
                     // performing the assignment.
-                    self.var_decl_expr(scope, Expr::Ident(ident.clone()))?;
-                    self.assign_expr(scope, *assign_expr)
+                    self.var_decl_expr(ctx, Expr::Ident(ident.clone()))?;
+                    self.assign_expr(ctx, *assign_expr)
                 } else {
-                    unreachable!("did not check l-value in `Parser::var_decl_expr`");
+                    unreachable!("did not check target in `Parser::var_decl_expr`");
                 }
             }
             Expr::Ident(ident) => {
-                if scope.variables.get(&ident).is_none() {
-                    scope.variables.insert(ident, Value::Null);
-                    Ok(Value::Null.into())
-                } else {
+                // FIXME: `ident` shouldn't be cloned here (hot path).
+                if !ctx.declare_variable(ident.clone(), Value::Null) {
                     bail!("variable is already declared: {}", ident);
+                } else {
+                    Ok(Value::Null.into())
                 }
             }
             _ => unreachable!("did not check expression in `Parser::var_decl_expr`"),
@@ -169,17 +299,18 @@ impl Interpreter {
 
     fn func_decl_expr(
         &mut self,
-        scope: &mut Scope,
+        ctx: &mut Context,
         func_decl_expr: FuncDeclExpr,
     ) -> Result<ReturnValue> {
         let value = Value::from(InternalFuncReference {
+            scope: ctx.escape(),
             params: func_decl_expr.params,
             block: func_decl_expr.block,
         });
 
         if let Some(ident) = func_decl_expr.name {
             // FIXME: `ident` shouldn't be cloned here (hot path).
-            if !scope.declare_variable(ident.clone(), value.clone()) {
+            if !ctx.declare_variable(ident.clone(), value.clone()) {
                 bail!("variable is already declared: {}", ident);
             }
         }
@@ -187,20 +318,20 @@ impl Interpreter {
         Ok(value.into())
     }
 
-    fn if_expr(&mut self, scope: &mut Scope, if_expr: IfExpr) -> Result<ReturnValue> {
-        let condition = try_return!(self.expr(scope, if_expr.condition)?);
-        if condition.is_truthy() {
-            self.block(scope, if_expr.truthy)
+    fn if_expr(&mut self, ctx: &mut Context, if_expr: IfExpr) -> Result<ReturnValue> {
+        let scope = Scope::with_parent(ctx.escape());
+        if try_return!(self.expr(ctx, if_expr.condition)?).is_truthy() {
+            self.block(&mut scope.into(), if_expr.truthy)
         } else {
-            self.block(scope, if_expr.falsey)
+            self.block(&mut scope.into(), if_expr.falsey)
         }
     }
 
-    fn while_expr(&mut self, scope: &mut Scope, while_expr: WhileExpr) -> Result<ReturnValue> {
+    fn while_expr(&mut self, ctx: &mut Context, while_expr: WhileExpr) -> Result<ReturnValue> {
         use self::ReturnValueKind::*;
 
         loop {
-            let return_value = self.expr(scope, while_expr.condition.clone())?;
+            let return_value = self.expr(ctx, while_expr.condition.clone())?;
             let condition = match return_value.kind {
                 ImplicitReturn => return_value.value,
                 ExplicitReturn => return Ok(return_value),
@@ -218,80 +349,79 @@ impl Interpreter {
                 break;
             }
 
-            try_return!(self.block(scope, while_expr.block.clone())?);
+            let scope = Scope::with_parent(ctx.escape());
+            try_return!(self.block(&mut scope.into(), while_expr.block.clone())?);
         }
         Ok(Value::Null.into())
     }
 
     fn try_catch_expr(
         &mut self,
-        scope: &mut Scope,
+        ctx: &mut Context,
         try_catch_expr: TryCatchExpr,
     ) -> Result<ReturnValue> {
         use self::ReturnValueKind::*;
 
-        let return_value = self.block(scope, try_catch_expr.block)?;
+        let return_value = self.block(ctx, try_catch_expr.block)?;
         let value = match return_value.kind {
             ImplicitReturn => return_value.value,
             ExplicitReturn => return Ok(return_value),
             Break => return Ok(return_value),
             Throw => {
-                let mut scope = Scope::new();
-                scope
-                    .variables
-                    .insert(try_catch_expr.error, return_value.value);
-                try_return!(self.block(&mut scope, try_catch_expr.catch)?)
+                let mut scope = Scope::with_parent(ctx.escape());
+                scope.declare_variable(try_catch_expr.error, return_value.value);
+                try_return!(self.block(&mut scope.into(), try_catch_expr.catch)?)
             }
         };
         Ok(value.into())
     }
 
-    fn return_expr(&mut self, scope: &mut Scope, return_expr: Expr) -> Result<ReturnValue> {
+    fn return_expr(&mut self, ctx: &mut Context, return_expr: Expr) -> Result<ReturnValue> {
         let return_value = ReturnValue {
             kind: ReturnValueKind::ExplicitReturn,
-            value: try_return!(self.expr(scope, return_expr)?),
+            value: try_return!(self.expr(ctx, return_expr)?),
         };
         Ok(return_value)
     }
 
-    fn break_expr(&mut self, scope: &mut Scope, break_expr: Expr) -> Result<ReturnValue> {
+    fn break_expr(&mut self, ctx: &mut Context, break_expr: Expr) -> Result<ReturnValue> {
         let return_value = ReturnValue {
             kind: ReturnValueKind::Break,
-            value: try_return!(self.expr(scope, break_expr)?),
+            value: try_return!(self.expr(ctx, break_expr)?),
         };
         Ok(return_value)
     }
 
-    fn throw_expr(&mut self, scope: &mut Scope, throw_expr: Expr) -> Result<ReturnValue> {
+    fn throw_expr(&mut self, ctx: &mut Context, throw_expr: Expr) -> Result<ReturnValue> {
         let return_value = ReturnValue {
             kind: ReturnValueKind::Throw,
-            value: try_return!(self.expr(scope, throw_expr)?),
+            value: try_return!(self.expr(ctx, throw_expr)?),
         };
         Ok(return_value)
     }
 
-    fn assign_expr(&mut self, scope: &mut Scope, assign_expr: AssignExpr) -> Result<ReturnValue> {
-        let value = try_return!(self.expr(scope, assign_expr.expr)?);
+    fn assign_expr(&mut self, ctx: &mut Context, assign_expr: AssignExpr) -> Result<ReturnValue> {
+        let value = try_return!(self.expr(ctx, assign_expr.expr)?);
 
         match assign_expr.target {
             Expr::Ident(ident) => {
-                if scope.variables.get(&ident).is_some() {
-                    scope.variables.insert(ident, value.clone());
-                    Ok(value.into())
-                } else {
+                // FIXME: `ident` shouldn't be cloned here (hot path).
+                if !ctx.set_variable(ident.clone(), value.clone()) {
                     bail!("variable is not declared: {}", ident);
+                } else {
+                    Ok(value.into())
                 }
             }
-            _ => unreachable!("did not check l-value in `Parser::expr_assign"),
+            _ => unreachable!("did not check target in `Parser::expr_assign"),
         }
     }
 
-    fn binary_expr(&mut self, scope: &mut Scope, binary_expr: BinaryExpr) -> Result<ReturnValue> {
+    fn binary_expr(&mut self, ctx: &mut Context, binary_expr: BinaryExpr) -> Result<ReturnValue> {
         use self::BinaryOp::*;
         use self::Value::*;
 
-        let left = try_return!(self.expr(scope, binary_expr.left)?);
-        let right = try_return!(self.expr(scope, binary_expr.right)?);
+        let left = try_return!(self.expr(ctx, binary_expr.left)?);
+        let right = try_return!(self.expr(ctx, binary_expr.right)?);
 
         let result = match (binary_expr.op, left, right) {
             (Add, Integer(left), Integer(right)) => Integer(left + right),
@@ -333,11 +463,11 @@ impl Interpreter {
         Ok(result.into())
     }
 
-    fn unary_expr(&mut self, scope: &mut Scope, unary_expr: UnaryExpr) -> Result<ReturnValue> {
+    fn unary_expr(&mut self, ctx: &mut Context, unary_expr: UnaryExpr) -> Result<ReturnValue> {
         use self::UnaryOp::*;
         use self::Value::*;
 
-        let operand = try_return!(self.expr(scope, unary_expr.expr)?);
+        let operand = try_return!(self.expr(ctx, unary_expr.expr)?);
 
         let result = match (unary_expr.op, operand) {
             (Negate, Integer(integer)) => Integer(-integer),
