@@ -34,6 +34,7 @@ pub enum Token {
     Ident(String),
 
     Var,
+    Func,
     If,
     Else,
     While,
@@ -44,6 +45,7 @@ pub enum Token {
     Break,
     Throw,
 
+    Comma,
     Newline,
 }
 
@@ -70,7 +72,7 @@ impl<R: Read> Lexer<R> {
             byte if is_digit(byte) => self.number()?,
             byte if is_op(byte) => self.op()?,
             byte if is_alpha(byte) || byte == b'_' => self.ident()?,
-            _ => bail!("unexpected byte: '{}'", byte),
+            _ => bail!("unexpected byte: '{}'", byte as char),
         };
 
         Ok(Some(token))
@@ -138,6 +140,7 @@ impl<R: Read> Lexer<R> {
                 Token::Or
             }
             (b'!', _) => Token::Not,
+            (b',', _) => Token::Comma,
             _ => unreachable!("forgot to match op in `is_op`"),
         };
         Ok(token)
@@ -159,6 +162,7 @@ impl<R: Read> Lexer<R> {
             "true" => Token::Boolean(true),
             "false" => Token::Boolean(false),
             "var" => Token::Var,
+            "func" => Token::Func,
             "if" => Token::If,
             "else" => Token::Else,
             "while" => Token::While,
@@ -227,7 +231,7 @@ fn is_digit(byte: u8) -> bool {
 fn is_op(byte: u8) -> bool {
     match byte {
         b'+' | b'-' | b'*' | b'/' | b'<' | b'>' | b'=' | b'(' | b')' | b'{' | b'}' | b'&'
-        | b'|' | b'!' => true,
+        | b'|' | b'!' | b',' => true,
         _ => false,
     }
 }

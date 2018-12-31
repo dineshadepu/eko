@@ -110,6 +110,19 @@ mod var {
     }
 }
 
+mod func {
+    use eko::Engine;
+
+    #[test]
+    fn basic() {
+        let source = "
+            func foo(bar, baz) {}
+        ";
+        let mut engine = Engine::new();
+        assert!(engine.evaluate_str(source).is_ok());
+    }
+}
+
 mod r#if {
     use eko::{Engine, Value};
 

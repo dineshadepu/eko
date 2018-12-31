@@ -2,11 +2,11 @@ use failure::bail;
 use indexmap::IndexMap;
 
 use crate::parser::{
-    AssignExpr, BinaryExpr, BinaryOp, Block, Expr, IfExpr, TryCatchExpr, UnaryExpr, UnaryOp,
-    WhileExpr,
+    AssignExpr, BinaryExpr, BinaryOp, Block, Expr, FuncDeclExpr, IfExpr, TryCatchExpr, UnaryExpr,
+    UnaryOp, WhileExpr,
 };
 use crate::result::Result;
-use crate::value::Value;
+use crate::value::{InternalFuncReference, Value};
 
 /// Represents the return value of a block.
 #[derive(Debug)]
@@ -50,6 +50,16 @@ impl Scope {
         Scope {
             variables: IndexMap::new(),
         }
+    }
+
+    /// Declares a variable if it doesn't exist and returns whether the variable
+    /// was successfully declared.
+    fn declare_variable(&mut self, ident: String, value: Value) -> bool {
+        if self.variables.get(&ident).is_some() {
+            return false;
+        }
+        self.variables.insert(ident, value);
+        true
     }
 }
 
@@ -108,6 +118,7 @@ impl Interpreter {
             Ident(ident) => self.ident(scope, ident)?,
 
             VarDecl(expr) => self.var_decl_expr(scope, *expr)?,
+            FuncDecl(func_decl_expr) => self.func_decl_expr(scope, *func_decl_expr)?,
 
             If(if_expr) => self.if_expr(scope, *if_expr)?,
             While(while_expr) => self.while_expr(scope, *while_expr)?,
@@ -154,6 +165,26 @@ impl Interpreter {
             }
             _ => unreachable!("did not check expression in `Parser::var_decl_expr`"),
         }
+    }
+
+    fn func_decl_expr(
+        &mut self,
+        scope: &mut Scope,
+        func_decl_expr: FuncDeclExpr,
+    ) -> Result<ReturnValue> {
+        let value = Value::from(InternalFuncReference {
+            params: func_decl_expr.params,
+            block: func_decl_expr.block,
+        });
+
+        if let Some(ident) = func_decl_expr.name {
+            // FIXME: `ident` shouldn't be cloned here (hot path).
+            if !scope.declare_variable(ident.clone(), value.clone()) {
+                bail!("variable is already declared: {}", ident);
+            }
+        }
+
+        Ok(value.into())
     }
 
     fn if_expr(&mut self, scope: &mut Scope, if_expr: IfExpr) -> Result<ReturnValue> {

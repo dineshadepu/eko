@@ -1,9 +1,14 @@
-#[derive(Clone, Debug, PartialEq)]
+use std::rc::Rc;
+
+use crate::parser::{Block, Params};
+
+#[derive(Clone, Debug)]
 pub enum Value {
     Null,
     Integer(i64),
     Float(f64),
     Boolean(bool),
+    Strong(Rc<Reference>),
 }
 
 impl Value {
@@ -16,6 +21,21 @@ impl Value {
 
         match self {
             Null | Boolean(false) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, right: &Value) -> bool {
+        use self::Value::*;
+
+        match (self, right) {
+            (Null, Null) => true,
+            (Integer(left), Integer(right)) => left == right,
+            (Float(left), Float(right)) => left == right,
+            (Boolean(left), Boolean(right)) => left == right,
+            (Strong(left), Strong(right)) => Rc::ptr_eq(left, right),
             _ => false,
         }
     }
@@ -39,6 +59,15 @@ impl From<bool> for Value {
     }
 }
 
+impl<R> From<R> for Value
+where
+    R: Into<Reference>,
+{
+    fn from(reference: R) -> Value {
+        Value::Strong(Rc::new(reference.into()))
+    }
+}
+
 impl<T> From<Option<T>> for Value
 where
     T: Into<Value>,
@@ -49,4 +78,21 @@ where
             None => Value::Null,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum Reference {
+    InternalFunc(InternalFuncReference),
+}
+
+impl From<InternalFuncReference> for Reference {
+    fn from(func: InternalFuncReference) -> Reference {
+        Reference::InternalFunc(func)
+    }
+}
+
+#[derive(Debug)]
+pub struct InternalFuncReference {
+    pub params: Params,
+    pub block: Block,
 }

@@ -19,6 +19,7 @@ pub enum Expr {
     Ident(String),
 
     VarDecl(Box<Expr>),
+    FuncDecl(Box<FuncDeclExpr>),
 
     If(Box<IfExpr>),
     While(Box<WhileExpr>),
@@ -31,6 +32,18 @@ pub enum Expr {
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
+}
+
+#[derive(Clone, Debug)]
+pub struct FuncDeclExpr {
+    pub name: Option<String>,
+    pub params: Params,
+    pub block: Block,
+}
+
+#[derive(Clone, Debug)]
+pub struct Params {
+    pub idents: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -146,8 +159,8 @@ impl<'a, R: Read> Parser<'a, R> {
     /// Parses a block of expressions separated by newlines.
     ///
     /// For better documentation on how the function works internally, refer to
-    /// `block_with_braces`, as the two are mostly similar (with the exceptions)
-    /// of the initial and final checking for braces.
+    /// `block_with_braces`, as the two are mostly similar (with the exceptions
+    /// of the initial and final checking for braces).
     fn block(&mut self) -> Result<Block> {
         self.newlines()?;
 
@@ -197,11 +210,9 @@ impl<'a, R: Read> Parser<'a, R> {
             self.newlines()?;
         }
 
-        let block = Block { exprs };
-
         assert_eq!(self.lexer_advance()?, Token::RightBrace);
 
-        Ok(block)
+        Ok(Block { exprs })
     }
 
     fn expr(&mut self) -> Result<Expr> {
@@ -210,11 +221,12 @@ impl<'a, R: Read> Parser<'a, R> {
             // actually a next token which means this call WILL be an `Err`
             // (which is exactly what we want).
             self.lexer_advance()?;
-            unreachable!();
+            unreachable!("`lexer_advance` did not return `Err` when lexer is empty");
         }
 
         let expr = match self.lexer_peek()?.unwrap() {
             Token::Var => Expr::VarDecl(self.var_decl_expr()?.into()),
+            Token::Func => Expr::FuncDecl(self.func_decl_expr()?.into()),
 
             Token::If => Expr::If(self.if_expr()?.into()),
             Token::While => Expr::While(self.while_expr()?.into()),
@@ -244,6 +256,67 @@ impl<'a, R: Read> Parser<'a, R> {
             _ => bail!("invalid expression in variable declaration"),
         }
         Ok(expr)
+    }
+
+    fn func_decl_expr(&mut self) -> Result<FuncDeclExpr> {
+        assert_eq!(self.lexer_advance()?, Token::Func);
+
+        let name = if let Some(Token::Ident(_)) = self.lexer_peek()? {
+            if let Token::Ident(ident) = self.lexer_advance()? {
+                Some(ident)
+            } else {
+                unreachable!("`lexer_advance` did not return the same token as `lexer_peek`");
+            }
+        } else {
+            None
+        };
+
+        let params = self.params()?;
+
+        let block = self.block_with_braces()?;
+
+        Ok(FuncDeclExpr {
+            name,
+            params,
+            block,
+        })
+    }
+
+    /// Parses parameters separated by commas.
+    ///
+    /// For better documentation on how the function works internally, refer to
+    /// `block_with_braces`, as the two are mostly similar (with the exceptions
+    /// of the initial, final checking for parens and the different
+    /// separators and delimeters).
+    fn params(&mut self) -> Result<Params> {
+        self.lexer_advance_expect(Token::LeftParen)?;
+
+        self.newlines()?;
+
+        let mut idents = Vec::new();
+        let mut comma = true;
+
+        while let Some(token) = self.lexer_peek()? {
+            if token == &Token::RightParen {
+                break;
+            }
+
+            if !comma {
+                self.lexer_advance_expect(Token::Comma)?;
+            }
+
+            match self.lexer_advance()? {
+                Token::Ident(ident) => idents.push(ident),
+                token => bail!("unexpected token: '{:?}', expected identifier", token),
+            }
+
+            comma = self.comma()?;
+            self.newlines()?;
+        }
+
+        assert_eq!(self.lexer_advance()?, Token::RightParen);
+
+        Ok(Params { idents })
     }
 
     fn if_expr(&mut self) -> Result<IfExpr> {
@@ -508,8 +581,18 @@ impl<'a, R: Read> Parser<'a, R> {
         Ok(expr)
     }
 
+    fn comma(&mut self) -> Result<bool> {
+        if let Some(Token::Comma) = self.lexer_peek()? {
+            assert_eq!(Token::Comma, self.lexer_advance()?);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn newline(&mut self) -> Result<bool> {
         if let Some(Token::Newline) = self.lexer_peek()? {
+            assert_eq!(Token::Newline, self.lexer_advance()?);
             Ok(true)
         } else {
             Ok(false)
