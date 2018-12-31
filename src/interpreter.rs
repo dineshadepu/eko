@@ -2,7 +2,8 @@ use failure::bail;
 use indexmap::IndexMap;
 
 use crate::parser::{
-    AssignExpr, BinaryExpr, BinaryOp, Block, Expr, IfExpr, UnaryExpr, UnaryOp, WhileExpr,
+    AssignExpr, BinaryExpr, BinaryOp, Block, Expr, IfExpr, TryCatchExpr, UnaryExpr, UnaryOp,
+    WhileExpr,
 };
 use crate::result::Result;
 use crate::value::Value;
@@ -110,6 +111,7 @@ impl Interpreter {
 
             If(if_expr) => self.if_expr(scope, *if_expr)?,
             While(while_expr) => self.while_expr(scope, *while_expr)?,
+            TryCatch(try_catch_expr) => self.try_catch_expr(scope, *try_catch_expr)?,
 
             Return(return_expr) => self.return_expr(scope, *return_expr)?,
             Break(break_expr) => self.break_expr(scope, *break_expr)?,
@@ -188,6 +190,29 @@ impl Interpreter {
             try_return!(self.block(scope, while_expr.block.clone())?);
         }
         Ok(Value::Null.into())
+    }
+
+    fn try_catch_expr(
+        &mut self,
+        scope: &mut Scope,
+        try_catch_expr: TryCatchExpr,
+    ) -> Result<ReturnValue> {
+        use self::ReturnValueKind::*;
+
+        let return_value = self.block(scope, try_catch_expr.block)?;
+        let value = match return_value.kind {
+            ImplicitReturn => return_value.value,
+            ExplicitReturn => return Ok(return_value),
+            Break => return Ok(return_value),
+            Throw => {
+                let mut scope = Scope::new();
+                scope
+                    .variables
+                    .insert(try_catch_expr.error, return_value.value);
+                try_return!(self.block(&mut scope, try_catch_expr.catch)?)
+            }
+        };
+        Ok(value.into())
     }
 
     fn return_expr(&mut self, scope: &mut Scope, return_expr: Expr) -> Result<ReturnValue> {

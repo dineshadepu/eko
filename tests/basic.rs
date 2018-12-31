@@ -209,11 +209,27 @@ mod r#while {
 
     #[test]
     fn single_line() {
-        let source = "
-            while false {}
-        ";
+        let source = "while false {}";
         let mut engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
+    }
+}
+
+mod try_catch {
+    use eko::Engine;
+
+    #[test]
+    fn basic() {
+        let source = "
+            try {
+                throw 25
+                20
+            } catch err {
+                err
+            }
+        ";
+        let mut engine = Engine::new();
+        assert_eq!(engine.evaluate_str(source).unwrap(), 25.into());
     }
 }
 

@@ -22,6 +22,7 @@ pub enum Expr {
 
     If(Box<IfExpr>),
     While(Box<WhileExpr>),
+    TryCatch(Box<TryCatchExpr>),
 
     Return(Box<Expr>),
     Break(Box<Expr>),
@@ -43,6 +44,13 @@ pub struct IfExpr {
 pub struct WhileExpr {
     pub condition: Expr,
     pub block: Block,
+}
+
+#[derive(Clone, Debug)]
+pub struct TryCatchExpr {
+    pub block: Block,
+    pub error: String,
+    pub catch: Block,
 }
 
 #[derive(Clone, Debug)]
@@ -210,6 +218,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
             Token::If => Expr::If(self.if_expr()?.into()),
             Token::While => Expr::While(self.while_expr()?.into()),
+            Token::Try => Expr::TryCatch(self.try_catch_expr()?.into()),
 
             Token::Return => Expr::Return(self.return_expr()?.into()),
             Token::Break => Expr::Break(self.break_expr()?.into()),
@@ -241,7 +250,10 @@ impl<'a, R: Read> Parser<'a, R> {
         assert_eq!(self.lexer_advance()?, Token::If);
 
         let condition = self.expr()?;
+
         let truthy = self.block_with_braces()?;
+        self.newlines()?;
+
         let falsey = if let Some(Token::Else) = self.lexer_peek()? {
             assert_eq!(self.lexer_advance()?, Token::Else);
             if let Some(Token::If) = self.lexer_peek()? {
@@ -275,6 +287,29 @@ impl<'a, R: Read> Parser<'a, R> {
         let while_expr = WhileExpr { condition, block };
 
         Ok(while_expr)
+    }
+
+    fn try_catch_expr(&mut self) -> Result<TryCatchExpr> {
+        assert_eq!(self.lexer_advance()?, Token::Try);
+
+        let block = self.block_with_braces()?;
+        self.newlines()?;
+
+        self.lexer_advance_expect(Token::Catch)?;
+
+        let error = match self.lexer_advance()? {
+            Token::Ident(error) => error,
+            token => bail!("unexpected token: '{:?}', expected 'catch'", token),
+        };
+
+        let catch = self.block_with_braces()?;
+
+        let try_catch_expr = TryCatchExpr {
+            block,
+            error,
+            catch,
+        };
+        Ok(try_catch_expr)
     }
 
     fn return_expr(&mut self) -> Result<Expr> {

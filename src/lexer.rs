@@ -37,6 +37,8 @@ pub enum Token {
     If,
     Else,
     While,
+    Try,
+    Catch,
 
     Return,
     Break,
@@ -163,6 +165,8 @@ impl<R: Read> Lexer<R> {
             "return" => Token::Return,
             "break" => Token::Break,
             "throw" => Token::Throw,
+            "try" => Token::Try,
+            "catch" => Token::Catch,
             _ => Token::Ident(buf),
         };
         Ok(token)
