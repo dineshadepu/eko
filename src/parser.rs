@@ -49,8 +49,8 @@ pub struct Params {
 #[derive(Clone, Debug)]
 pub struct IfExpr {
     pub condition: Expr,
-    pub truthy: Block,
-    pub falsey: Block,
+    pub truthy_block: Block,
+    pub falsey_block: Block,
 }
 
 #[derive(Clone, Debug)]
@@ -61,15 +61,15 @@ pub struct WhileExpr {
 
 #[derive(Clone, Debug)]
 pub struct TryCatchExpr {
-    pub block: Block,
-    pub error: String,
-    pub catch: Block,
+    pub try_block: Block,
+    pub error_ident: String,
+    pub catch_block: Block,
 }
 
 #[derive(Clone, Debug)]
 pub struct AssignExpr {
     pub target: Expr,
-    pub expr: Expr,
+    pub value: Expr,
 }
 
 #[derive(Clone, Debug)]
@@ -82,7 +82,7 @@ pub struct BinaryExpr {
 #[derive(Clone, Debug)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
-    pub expr: Expr,
+    pub value: Expr,
 }
 
 #[derive(Clone, Debug)]
@@ -324,10 +324,10 @@ impl<'a, R: Read> Parser<'a, R> {
 
         let condition = self.expr()?;
 
-        let truthy = self.block_with_braces()?;
+        let truthy_block = self.block_with_braces()?;
         self.newlines()?;
 
-        let falsey = if let Some(Token::Else) = self.lexer_peek()? {
+        let falsey_block = if let Some(Token::Else) = self.lexer_peek()? {
             assert_eq!(self.lexer_advance()?, Token::Else);
             if let Some(Token::If) = self.lexer_peek()? {
                 Block {
@@ -344,8 +344,8 @@ impl<'a, R: Read> Parser<'a, R> {
 
         let if_expr = IfExpr {
             condition,
-            truthy,
-            falsey,
+            truthy_block,
+            falsey_block,
         };
 
         Ok(if_expr)
@@ -355,6 +355,7 @@ impl<'a, R: Read> Parser<'a, R> {
         assert_eq!(self.lexer_advance()?, Token::While);
 
         let condition = self.expr()?;
+
         let block = self.block_with_braces()?;
 
         let while_expr = WhileExpr { condition, block };
@@ -365,22 +366,22 @@ impl<'a, R: Read> Parser<'a, R> {
     fn try_catch_expr(&mut self) -> Result<TryCatchExpr> {
         assert_eq!(self.lexer_advance()?, Token::Try);
 
-        let block = self.block_with_braces()?;
+        let try_block = self.block_with_braces()?;
         self.newlines()?;
 
         self.lexer_advance_expect(Token::Catch)?;
 
-        let error = match self.lexer_advance()? {
-            Token::Ident(error) => error,
+        let error_ident = match self.lexer_advance()? {
+            Token::Ident(ident) => ident,
             token => bail!("unexpected token: '{:?}', expected 'catch'", token),
         };
 
-        let catch = self.block_with_braces()?;
+        let catch_block = self.block_with_braces()?;
 
         let try_catch_expr = TryCatchExpr {
-            block,
-            error,
-            catch,
+            try_block,
+            error_ident,
+            catch_block,
         };
         Ok(try_catch_expr)
     }
@@ -428,7 +429,7 @@ impl<'a, R: Read> Parser<'a, R> {
 
         let assign_expr = AssignExpr {
             target,
-            expr: self.expr()?,
+            value: self.expr()?,
         };
 
         Ok(Expr::Assign(assign_expr.into()))
@@ -558,7 +559,7 @@ impl<'a, R: Read> Parser<'a, R> {
             .unwrap();
         let unary_expr = UnaryExpr {
             op,
-            expr: self.expr_unary()?,
+            value: self.expr_unary()?,
         };
 
         Ok(Expr::Unary(unary_expr.into()))

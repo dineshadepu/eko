@@ -321,9 +321,9 @@ impl Interpreter {
     fn if_expr(&mut self, ctx: &mut Context, if_expr: IfExpr) -> Result<ReturnValue> {
         let scope = Scope::with_parent(ctx.escape());
         if try_return!(self.expr(ctx, if_expr.condition)?).is_truthy() {
-            self.block(&mut scope.into(), if_expr.truthy)
+            self.block(&mut scope.into(), if_expr.truthy_block)
         } else {
-            self.block(&mut scope.into(), if_expr.falsey)
+            self.block(&mut scope.into(), if_expr.falsey_block)
         }
     }
 
@@ -362,46 +362,44 @@ impl Interpreter {
     ) -> Result<ReturnValue> {
         use self::ReturnValueKind::*;
 
-        let return_value = self.block(ctx, try_catch_expr.block)?;
+        let return_value = self.block(ctx, try_catch_expr.try_block)?;
+
         let value = match return_value.kind {
             ImplicitReturn => return_value.value,
             ExplicitReturn => return Ok(return_value),
             Break => return Ok(return_value),
             Throw => {
                 let mut scope = Scope::with_parent(ctx.escape());
-                scope.declare_variable(try_catch_expr.error, return_value.value);
-                try_return!(self.block(&mut scope.into(), try_catch_expr.catch)?)
+                scope.declare_variable(try_catch_expr.error_ident, return_value.value);
+                try_return!(self.block(&mut scope.into(), try_catch_expr.catch_block)?)
             }
         };
         Ok(value.into())
     }
 
     fn return_expr(&mut self, ctx: &mut Context, return_expr: Expr) -> Result<ReturnValue> {
-        let return_value = ReturnValue {
+        Ok(ReturnValue {
             kind: ReturnValueKind::ExplicitReturn,
             value: try_return!(self.expr(ctx, return_expr)?),
-        };
-        Ok(return_value)
+        })
     }
 
     fn break_expr(&mut self, ctx: &mut Context, break_expr: Expr) -> Result<ReturnValue> {
-        let return_value = ReturnValue {
+        Ok(ReturnValue {
             kind: ReturnValueKind::Break,
             value: try_return!(self.expr(ctx, break_expr)?),
-        };
-        Ok(return_value)
+        })
     }
 
     fn throw_expr(&mut self, ctx: &mut Context, throw_expr: Expr) -> Result<ReturnValue> {
-        let return_value = ReturnValue {
+        Ok(ReturnValue {
             kind: ReturnValueKind::Throw,
             value: try_return!(self.expr(ctx, throw_expr)?),
-        };
-        Ok(return_value)
+        })
     }
 
     fn assign_expr(&mut self, ctx: &mut Context, assign_expr: AssignExpr) -> Result<ReturnValue> {
-        let value = try_return!(self.expr(ctx, assign_expr.expr)?);
+        let value = try_return!(self.expr(ctx, assign_expr.value)?);
 
         match assign_expr.target {
             Expr::Ident(ident) => {
@@ -423,7 +421,7 @@ impl Interpreter {
         let left = try_return!(self.expr(ctx, binary_expr.left)?);
         let right = try_return!(self.expr(ctx, binary_expr.right)?);
 
-        let result = match (binary_expr.op, left, right) {
+        let result_value = match (binary_expr.op, left, right) {
             (Add, Integer(left), Integer(right)) => Integer(left + right),
             (Add, Integer(left), Float(right)) => Float(left as f64 + right),
             (Add, Float(left), Integer(right)) => Float(left + right as f64),
@@ -460,21 +458,21 @@ impl Interpreter {
                 right
             ),
         };
-        Ok(result.into())
+        Ok(result_value.into())
     }
 
     fn unary_expr(&mut self, ctx: &mut Context, unary_expr: UnaryExpr) -> Result<ReturnValue> {
         use self::UnaryOp::*;
         use self::Value::*;
 
-        let operand = try_return!(self.expr(ctx, unary_expr.expr)?);
+        let value = try_return!(self.expr(ctx, unary_expr.value)?);
 
-        let result = match (unary_expr.op, operand) {
+        let result_value = match (unary_expr.op, value) {
             (Negate, Integer(integer)) => Integer(-integer),
             (Negate, Float(float)) => Float(-float),
             (Not, operand) => Boolean(operand.is_falsey()),
             (op, operand) => bail!("invalid operation '{:?}' on operand: {:?}", op, operand),
         };
-        Ok(result.into())
+        Ok(result_value.into())
     }
 }
