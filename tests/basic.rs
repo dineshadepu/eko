@@ -4,49 +4,49 @@ mod binary {
     #[test]
     fn add() {
         let source = "1 + 1";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 2.into());
     }
 
     #[test]
     fn subtract() {
         let source = "1 - 1";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 0.into());
     }
 
     #[test]
     fn less() {
         let source = "2 < 1";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), false.into());
     }
 
     #[test]
     fn greater() {
         let source = "2 > 1";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), true.into());
     }
 
     #[test]
     fn and() {
         let source = "true && false";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), false.into());
     }
 
     #[test]
     fn or() {
         let source = "true || true";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), true.into());
     }
 
     #[test]
     fn compound() {
         let source = "1 + 4 * 5";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 21.into());
     }
 }
@@ -57,21 +57,21 @@ mod unary {
     #[test]
     fn not() {
         let source = "!false";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), true.into());
     }
 
     #[test]
     fn negate() {
         let source = "-10";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), (-10).into());
     }
 
     #[test]
     fn compound() {
         let source = "-10 + 33";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 23.into());
     }
 }
@@ -82,7 +82,7 @@ mod var {
     #[test]
     fn declaration() {
         let source = "var one";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
     }
 
@@ -93,7 +93,7 @@ mod var {
             one = 2 * 2
             one
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 4.into());
     }
 
@@ -105,7 +105,7 @@ mod var {
             var three = one + two
             three
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 11.into());
     }
 }
@@ -118,7 +118,7 @@ mod func {
         let source = "
             func foo(bar, baz) {}
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert!(engine.evaluate_str(source).is_ok());
     }
 }
@@ -133,7 +133,7 @@ mod r#if {
                 1 + 1
             }
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
     }
 
@@ -146,7 +146,7 @@ mod r#if {
                 10 * 2
             }
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 22.into());
     }
 
@@ -161,7 +161,7 @@ mod r#if {
                 29 * 3
             }
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 22.into());
     }
 
@@ -175,14 +175,14 @@ mod r#if {
             }
             twenty_two * 2
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 44.into());
     }
 
     #[test]
     fn single_line() {
         let source = "if true { 10 } else { 5 }";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 10.into());
     }
 }
@@ -201,7 +201,7 @@ mod r#while {
             }
             y
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 10.into());
     }
 
@@ -216,14 +216,29 @@ mod r#while {
                 }
             }
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 4.into());
+    }
+
+    #[test]
+    fn no_leaking_scope() {
+        let source = "
+            var x = 10
+            while x > 0 {
+                x = x - 1
+
+                var y = 1
+                y = y - 1
+            }
+        ";
+        let engine = Engine::new();
+        assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
     }
 
     #[test]
     fn single_line() {
         let source = "while false {}";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), Value::Null);
     }
 }
@@ -241,7 +256,7 @@ mod try_catch {
                 err
             }
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 25.into());
     }
 }
@@ -255,7 +270,7 @@ mod newline {
             1 + 4 * 5
             22 / 4.0
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert_eq!(engine.evaluate_str(source).unwrap(), 5.5.into());
     }
 
@@ -264,7 +279,7 @@ mod newline {
         let source = "
             1 + 4 * 5 22 / 4.0
         ";
-        let mut engine = Engine::new();
+        let engine = Engine::new();
         assert!(engine.evaluate_str(source).is_err());
     }
 }
