@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::Scope;
-use crate::parser::{Block, Params};
+use crate::parser::Func;
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -96,6 +96,5 @@ impl From<InternalFuncReference> for Reference {
 #[derive(Debug)]
 pub struct InternalFuncReference {
     pub scope: Rc<RefCell<Scope>>,
-    pub params: Params,
-    pub block: Block,
+    pub func: Rc<Func>,
 }

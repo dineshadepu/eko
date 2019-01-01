@@ -304,11 +304,10 @@ impl Interpreter {
     ) -> Result<ReturnValue> {
         let value = Value::from(InternalFuncReference {
             scope: ctx.escape(),
-            params: func_decl_expr.params,
-            block: func_decl_expr.block,
+            func: func_decl_expr.0.clone(),
         });
 
-        if let Some(ident) = func_decl_expr.name {
+        if let Some(ident) = func_decl_expr.0.name.as_ref() {
             // FIXME: `ident` shouldn't be cloned here (hot path).
             if !ctx.declare_variable(ident.clone(), value.clone()) {
                 bail!("variable is already declared: {}", ident);

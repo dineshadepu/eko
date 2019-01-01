@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::rc::Rc;
 
 use failure::{bail, format_err};
 
@@ -35,7 +36,10 @@ pub enum Expr {
 }
 
 #[derive(Clone, Debug)]
-pub struct FuncDeclExpr {
+pub struct FuncDeclExpr(pub Rc<Func>);
+
+#[derive(Clone, Debug)]
+pub struct Func {
     pub name: Option<String>,
     pub params: Params,
     pub block: Block,
@@ -275,11 +279,12 @@ impl<'a, R: Read> Parser<'a, R> {
 
         let block = self.block_with_braces()?;
 
-        Ok(FuncDeclExpr {
+        let func = Func {
             name,
             params,
             block,
-        })
+        };
+        Ok(FuncDeclExpr(Rc::new(func)))
     }
 
     /// Parses parameters separated by commas.
