@@ -24,6 +24,6 @@ impl Engine {
     pub fn evaluate<R: Read>(&mut self, source: R) -> Result<Value> {
         let mut lexer = Lexer::new(source);
         let block = Parser::new(&mut lexer).parse()?;
-        Interpreter::new().evaluate(&mut self.ctx, block)
+        Interpreter::new().evaluate(&mut self.ctx, &block)
     }
 }

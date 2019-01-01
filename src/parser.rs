@@ -6,12 +6,12 @@ use failure::{bail, format_err};
 use crate::lexer::{Lexer, Token};
 use crate::result::Result;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Block {
     pub exprs: Vec<Expr>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Expr {
     Null,
     Integer(i64),
@@ -35,61 +35,61 @@ pub enum Expr {
     Unary(Box<UnaryExpr>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FuncDeclExpr(pub Rc<Func>);
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Func {
     pub name: Option<String>,
     pub params: Params,
     pub block: Block,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Params {
     pub idents: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct IfExpr {
     pub condition: Expr,
     pub truthy_block: Block,
     pub falsey_block: Block,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct WhileExpr {
     pub condition: Expr,
     pub block: Block,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TryCatchExpr {
     pub try_block: Block,
     pub error_ident: String,
     pub catch_block: Block,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct AssignExpr {
     pub target: Expr,
     pub value: Expr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct BinaryExpr {
     pub op: BinaryOp,
     pub left: Expr,
     pub right: Expr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub value: Expr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -129,7 +129,7 @@ impl BinaryOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum UnaryOp {
     Negate,
     Not,

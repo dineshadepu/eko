@@ -147,6 +147,10 @@ impl Scope {
         }
     }
 
+    fn clear(&mut self) {
+        self.variables.clear();
+    }
+
     /// Declares a variable if it doesn't exist and returns whether the variable
     /// was successfully declared.
     fn declare_variable(&mut self, ident: String, value: Value) -> bool {
@@ -216,7 +220,7 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn evaluate(&mut self, ctx: &mut Context, block: Block) -> Result<Value> {
+    pub fn evaluate(&mut self, ctx: &mut Context, block: &Block) -> Result<Value> {
         use self::ReturnValueKind::*;
 
         let return_value = self.block(ctx, block)?;
@@ -226,46 +230,52 @@ impl Interpreter {
         }
     }
 
-    fn block(&mut self, ctx: &mut Context, mut block: Block) -> Result<ReturnValue> {
-        let last_expr = match block.exprs.pop() {
+    fn block(&mut self, ctx: &mut Context, block: &Block) -> Result<ReturnValue> {
+        // Need to return the value of the last expression. Rust `for` loops
+        // currently don't support that, so the last expression is extracted out
+        // and evaluated separately after the `for` loop.
+        let last_expr = match block.exprs.last() {
             Some(expr) => expr,
             None => return Ok(Value::Null.into()),
         };
-        for expr in block.exprs {
+
+        for expr in block.exprs.iter().take(block.exprs.len() - 1) {
             try_return!(self.expr(ctx, expr)?);
         }
+
+        // Evaluate and return the value of the last expression.
         self.expr(ctx, last_expr)
     }
 
-    fn expr(&mut self, ctx: &mut Context, expr: Expr) -> Result<ReturnValue> {
+    fn expr(&mut self, ctx: &mut Context, expr: &Expr) -> Result<ReturnValue> {
         use self::Expr::*;
 
         let return_value = match expr {
             Null => Value::Null.into(),
-            Integer(integer) => Value::Integer(integer).into(),
-            Float(float) => Value::Float(float).into(),
-            Boolean(boolean) => Value::Boolean(boolean).into(),
+            Integer(integer) => Value::Integer(*integer).into(),
+            Float(float) => Value::Float(*float).into(),
+            Boolean(boolean) => Value::Boolean(*boolean).into(),
             Ident(ident) => self.ident(ctx, ident)?,
 
-            VarDecl(expr) => self.var_decl_expr(ctx, *expr)?,
-            FuncDecl(func_decl_expr) => self.func_decl_expr(ctx, *func_decl_expr)?,
+            VarDecl(expr) => self.var_decl_expr(ctx, &**expr)?,
+            FuncDecl(func_decl_expr) => self.func_decl_expr(ctx, &**func_decl_expr)?,
 
-            If(if_expr) => self.if_expr(ctx, *if_expr)?,
-            While(while_expr) => self.while_expr(ctx, *while_expr)?,
-            TryCatch(try_catch_expr) => self.try_catch_expr(ctx, *try_catch_expr)?,
+            If(if_expr) => self.if_expr(ctx, &**if_expr)?,
+            While(while_expr) => self.while_expr(ctx, &**while_expr)?,
+            TryCatch(try_catch_expr) => self.try_catch_expr(ctx, &**try_catch_expr)?,
 
-            Return(return_expr) => self.return_expr(ctx, *return_expr)?,
-            Break(break_expr) => self.break_expr(ctx, *break_expr)?,
-            Throw(throw_expr) => self.throw_expr(ctx, *throw_expr)?,
+            Return(return_expr) => self.return_expr(ctx, &**return_expr)?,
+            Break(break_expr) => self.break_expr(ctx, &**break_expr)?,
+            Throw(throw_expr) => self.throw_expr(ctx, &**throw_expr)?,
 
-            Assign(assign_expr) => self.assign_expr(ctx, *assign_expr)?,
-            Binary(binary_expr) => self.binary_expr(ctx, *binary_expr)?,
-            Unary(unary_expr) => self.unary_expr(ctx, *unary_expr)?,
+            Assign(assign_expr) => self.assign_expr(ctx, &**assign_expr)?,
+            Binary(binary_expr) => self.binary_expr(ctx, &**binary_expr)?,
+            Unary(unary_expr) => self.unary_expr(ctx, &**unary_expr)?,
         };
         Ok(return_value)
     }
 
-    fn ident(&mut self, ctx: &mut Context, ident: String) -> Result<ReturnValue> {
+    fn ident(&mut self, ctx: &mut Context, ident: &String) -> Result<ReturnValue> {
         if let Some(value) = ctx.variable(&ident) {
             Ok(value.clone().into())
         } else {
@@ -273,14 +283,14 @@ impl Interpreter {
         }
     }
 
-    fn var_decl_expr(&mut self, ctx: &mut Context, expr: Expr) -> Result<ReturnValue> {
+    fn var_decl_expr(&mut self, ctx: &mut Context, expr: &Expr) -> Result<ReturnValue> {
         match expr {
             Expr::Assign(assign_expr) => {
                 if let Expr::Ident(ident) = &assign_expr.target {
                     // Declare the variable with `Value::Null` first, before
                     // performing the assignment.
-                    self.var_decl_expr(ctx, Expr::Ident(ident.clone()))?;
-                    self.assign_expr(ctx, *assign_expr)
+                    self.var_decl_expr(ctx, &Expr::Ident(ident.clone()))?;
+                    self.assign_expr(ctx, &**assign_expr)
                 } else {
                     unreachable!("did not check target in `Parser::var_decl_expr`");
                 }
@@ -300,7 +310,7 @@ impl Interpreter {
     fn func_decl_expr(
         &mut self,
         ctx: &mut Context,
-        func_decl_expr: FuncDeclExpr,
+        func_decl_expr: &FuncDeclExpr,
     ) -> Result<ReturnValue> {
         let value = Value::from(InternalFuncReference {
             scope: ctx.escape(),
@@ -317,20 +327,20 @@ impl Interpreter {
         Ok(value.into())
     }
 
-    fn if_expr(&mut self, ctx: &mut Context, if_expr: IfExpr) -> Result<ReturnValue> {
+    fn if_expr(&mut self, ctx: &mut Context, if_expr: &IfExpr) -> Result<ReturnValue> {
         let scope = Scope::with_parent(ctx.escape());
-        if try_return!(self.expr(ctx, if_expr.condition)?).is_truthy() {
-            self.block(&mut scope.into(), if_expr.truthy_block)
+        if try_return!(self.expr(ctx, &if_expr.condition)?).is_truthy() {
+            self.block(&mut scope.into(), &if_expr.truthy_block)
         } else {
-            self.block(&mut scope.into(), if_expr.falsey_block)
+            self.block(&mut scope.into(), &if_expr.falsey_block)
         }
     }
 
-    fn while_expr(&mut self, ctx: &mut Context, while_expr: WhileExpr) -> Result<ReturnValue> {
+    fn while_expr(&mut self, ctx: &mut Context, while_expr: &WhileExpr) -> Result<ReturnValue> {
         use self::ReturnValueKind::*;
 
         loop {
-            let return_value = self.expr(ctx, while_expr.condition.clone())?;
+            let return_value = self.expr(ctx, &while_expr.condition)?;
             let condition = match return_value.kind {
                 ImplicitReturn => return_value.value,
                 ExplicitReturn => return Ok(return_value),
@@ -349,7 +359,7 @@ impl Interpreter {
             }
 
             let scope = Scope::with_parent(ctx.escape());
-            try_return!(self.block(&mut scope.into(), while_expr.block.clone())?);
+            try_return!(self.block(&mut scope.into(), &while_expr.block)?);
         }
         Ok(Value::Null.into())
     }
@@ -357,11 +367,11 @@ impl Interpreter {
     fn try_catch_expr(
         &mut self,
         ctx: &mut Context,
-        try_catch_expr: TryCatchExpr,
+        try_catch_expr: &TryCatchExpr,
     ) -> Result<ReturnValue> {
         use self::ReturnValueKind::*;
 
-        let return_value = self.block(ctx, try_catch_expr.try_block)?;
+        let return_value = self.block(ctx, &try_catch_expr.try_block)?;
 
         let value = match return_value.kind {
             ImplicitReturn => return_value.value,
@@ -369,38 +379,39 @@ impl Interpreter {
             Break => return Ok(return_value),
             Throw => {
                 let mut scope = Scope::with_parent(ctx.escape());
-                scope.declare_variable(try_catch_expr.error_ident, return_value.value);
-                try_return!(self.block(&mut scope.into(), try_catch_expr.catch_block)?)
+                // FIXME: `ident` shouldn't be cloned here (hot path).
+                scope.declare_variable(try_catch_expr.error_ident.clone(), return_value.value);
+                try_return!(self.block(&mut scope.into(), &try_catch_expr.catch_block)?)
             }
         };
         Ok(value.into())
     }
 
-    fn return_expr(&mut self, ctx: &mut Context, return_expr: Expr) -> Result<ReturnValue> {
+    fn return_expr(&mut self, ctx: &mut Context, return_expr: &Expr) -> Result<ReturnValue> {
         Ok(ReturnValue {
             kind: ReturnValueKind::ExplicitReturn,
-            value: try_return!(self.expr(ctx, return_expr)?),
+            value: try_return!(self.expr(ctx, &return_expr)?),
         })
     }
 
-    fn break_expr(&mut self, ctx: &mut Context, break_expr: Expr) -> Result<ReturnValue> {
+    fn break_expr(&mut self, ctx: &mut Context, break_expr: &Expr) -> Result<ReturnValue> {
         Ok(ReturnValue {
             kind: ReturnValueKind::Break,
-            value: try_return!(self.expr(ctx, break_expr)?),
+            value: try_return!(self.expr(ctx, &break_expr)?),
         })
     }
 
-    fn throw_expr(&mut self, ctx: &mut Context, throw_expr: Expr) -> Result<ReturnValue> {
+    fn throw_expr(&mut self, ctx: &mut Context, throw_expr: &Expr) -> Result<ReturnValue> {
         Ok(ReturnValue {
             kind: ReturnValueKind::Throw,
-            value: try_return!(self.expr(ctx, throw_expr)?),
+            value: try_return!(self.expr(ctx, &throw_expr)?),
         })
     }
 
-    fn assign_expr(&mut self, ctx: &mut Context, assign_expr: AssignExpr) -> Result<ReturnValue> {
-        let value = try_return!(self.expr(ctx, assign_expr.value)?);
+    fn assign_expr(&mut self, ctx: &mut Context, assign_expr: &AssignExpr) -> Result<ReturnValue> {
+        let value = try_return!(self.expr(ctx, &assign_expr.value)?);
 
-        match assign_expr.target {
+        match &assign_expr.target {
             Expr::Ident(ident) => {
                 // FIXME: `ident` shouldn't be cloned here (hot path).
                 if !ctx.set_variable(ident.clone(), value.clone()) {
@@ -413,14 +424,14 @@ impl Interpreter {
         }
     }
 
-    fn binary_expr(&mut self, ctx: &mut Context, binary_expr: BinaryExpr) -> Result<ReturnValue> {
+    fn binary_expr(&mut self, ctx: &mut Context, binary_expr: &BinaryExpr) -> Result<ReturnValue> {
         use self::BinaryOp::*;
         use self::Value::*;
 
-        let left = try_return!(self.expr(ctx, binary_expr.left)?);
-        let right = try_return!(self.expr(ctx, binary_expr.right)?);
+        let left = try_return!(self.expr(ctx, &binary_expr.left)?);
+        let right = try_return!(self.expr(ctx, &binary_expr.right)?);
 
-        let result_value = match (binary_expr.op, left, right) {
+        let result_value = match (&binary_expr.op, left, right) {
             (Add, Integer(left), Integer(right)) => Integer(left + right),
             (Add, Integer(left), Float(right)) => Float(left as f64 + right),
             (Add, Float(left), Integer(right)) => Float(left + right as f64),
@@ -460,13 +471,13 @@ impl Interpreter {
         Ok(result_value.into())
     }
 
-    fn unary_expr(&mut self, ctx: &mut Context, unary_expr: UnaryExpr) -> Result<ReturnValue> {
+    fn unary_expr(&mut self, ctx: &mut Context, unary_expr: &UnaryExpr) -> Result<ReturnValue> {
         use self::UnaryOp::*;
         use self::Value::*;
 
-        let value = try_return!(self.expr(ctx, unary_expr.value)?);
+        let value = try_return!(self.expr(ctx, &unary_expr.value)?);
 
-        let result_value = match (unary_expr.op, value) {
+        let result_value = match (&unary_expr.op, value) {
             (Negate, Integer(integer)) => Integer(-integer),
             (Negate, Float(float)) => Float(-float),
             (Not, operand) => Boolean(operand.is_falsey()),
